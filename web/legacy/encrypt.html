@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文本加解密工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0c0e14;
+    --surface: rgba(255,255,255,0.03);
+    --surface-hover: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.08);
+    --border-focus: rgba(120,160,255,0.4);
+    --text: #e2e4ea;
+    --text-dim: #6b7080;
+    --text-muted: #3e4250;
+    --accent: #78a0ff;
+    --accent-glow: rgba(120,160,255,0.15);
+    --green: #4ade80;
+    --green-glow: rgba(74,222,128,0.12);
+    --amber: #fbbf24;
+    --amber-glow: rgba(251,191,36,0.12);
+    --red: #f87171;
+    --red-glow: rgba(248,113,113,0.12);
+    --radius: 12px;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --mono: ui-monospace, 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow-x: hidden;
+  }
+
+  /* Animated background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120,160,255,0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(74,222,128,0.05), transparent);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 520px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  .header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  .header p {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    backdrop-filter: blur(20px);
+  }
+
+  /* Fields */
+  .field { margin-bottom: 20px; }
+
+  .field:last-child { margin-bottom: 0; }
+
+  label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+
+  label .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  input, textarea {
+    width: 100%;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: var(--text-muted);
+  }
+
+  input:focus, textarea:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  textarea {
+    min-height: 110px;
+    resize: vertical;
+    line-height: 1.6;
+  }
+
+  /* Offset badge */
+  .offset-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    padding: 3px 10px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(120,160,255,0.15);
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.25s, transform 0.25s;
+  }
+
+  .offset-badge.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Buttons */
+  .btn-group {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-group .btn { flex: 1; }
+
+  .btn {
+    position: relative;
+    padding: 11px 16px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden;
+  }
+
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .btn:active { transform: scale(0.97); }
+
+  /* Encrypt button */
+  .btn-primary {
+    background: rgba(120,160,255,0.1);
+    border-color: rgba(120,160,255,0.2);
+    color: var(--accent);
+  }
+
+  .btn-primary:hover {
+    background: rgba(120,160,255,0.18);
+    border-color: rgba(120,160,255,0.35);
+    box-shadow: 0 4px 20px rgba(120,160,255,0.15);
+  }
+
+  /* Decrypt button */
+  .btn-green {
+    background: rgba(74,222,128,0.08);
+    border-color: rgba(74,222,128,0.18);
+    color: var(--green);
+  }
+
+  .btn-green:hover {
+    background: rgba(74,222,128,0.15);
+    border-color: rgba(74,222,128,0.3);
+    box-shadow: 0 4px 20px rgba(74,222,128,0.1);
+  }
+
+  /* Copy button */
+  .btn-amber {
+    background: rgba(251,191,36,0.08);
+    border-color: rgba(251,191,36,0.18);
+    color: var(--amber);
+  }
+
+  .btn-amber:hover {
+    background: rgba(251,191,36,0.15);
+    border-color: rgba(251,191,36,0.3);
+  }
+
+  /* Clear button */
+  .btn-red {
+    background: rgba(248,113,113,0.06);
+    border-color: rgba(248,113,113,0.12);
+    color: var(--red);
+  }
+
+  .btn-red:hover {
+    background: rgba(248,113,113,0.12);
+    border-color: rgba(248,113,113,0.25);
+  }
+
+  /* Swap button */
+  .btn-swap {
+    background: rgba(167,139,250,0.08);
+    border-color: rgba(167,139,250,0.18);
+    color: #a78bfa;
+  }
+
+  .btn-swap:hover {
+    background: rgba(167,139,250,0.15);
+    border-color: rgba(167,139,250,0.3);
+  }
+
+  .row { display: flex; gap: 12px; }
+
+  /* Output section */
+  .output-section {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-12px);
+    background: rgba(30,32,42,0.95);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 999;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Output readonly textarea */
+  #output {
+    cursor: default;
+  }
+
+  /* Responsive */
+  @media (max-width: 480px) {
+    body { padding: 16px; }
+    .card { padding: 18px; }
+    .header h1 { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>文本加解密</h1>
+    <p>密钥 → 伪随机偏移序列 → 逐字符移位</p>
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label><span class="dot"></span>密钥</label>
+      <input type="text" id="key" value="mimo" placeholder="输入任意字符串作为密钥">
+      <div class="offset-badge" id="offsetBadge">seed <strong id="offsetVal"></strong></div>
+    </div>
+
+    <div class="row">
+      <div class="field" style="flex:1">
+        <label><span class="dot"></span>轮次</label>
+        <input type="number" id="rounds" value="1" min="1" max="99">
+      </div>
+    </div>
+
+    <div class="field">
+      <label><span class="dot"></span>输入文本</label>
+      <textarea id="input" placeholder="在此输入要加密或解密的文本..."></textarea>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="doEncrypt()">加密</button>
+      <button class="btn btn-green" onclick="doDecrypt()">解密</button>
+    </div>
+
+    <div class="output-section">
+      <div class="field">
+        <label><span class="dot"></span>输出结果</label>
+        <textarea id="output" readonly placeholder="结果显示在这里..."></textarea>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-amber" onclick="copyResult()">复制结果</button>
+        <button class="btn btn-swap" onclick="swapToInput()">回填输入</button>
+        <button class="btn btn-red" onclick="clearAll()">清空</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const MOD = 0x110000;
+
+// ---- 控制字符 / 代理区 ----
+function isControl(code) {
+  return (code <= 0x1F) || (code >= 0x7F && code <= 0x9F) ||
+         (code >= 0xD800 && code <= 0xDFFF);
+}
+
+// 统计安全字符总数
+let SAFE_TOTAL = 0;
+for (let i = 0; i < MOD; i++) {
+  if (!isControl(i)) SAFE_TOTAL++;
+}
+
+// 正向映射：安全位置 → Unicode 码点（跳过控制字符）
+const fwdMap = new Uint32Array(SAFE_TOTAL);
+// 反向映射：Unicode 码点 → 安全位置
+const revMap = new Int32Array(MOD);
+
+(function buildMaps() {
+  let safeIdx = 0;
+  for (let code = 0; code < MOD; code++) {
+    if (!isControl(code)) {
+      fwdMap[safeIdx] = code;
+      revMap[code] = safeIdx;
+      safeIdx++;
+    } else {
+      revMap[code] = -1; // 标记为不可映射
+    }
+  }
+})();
+
+// ---- 密钥 → 伪随机偏移序列 ----
+function hashKey(key) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = (h * 0x01000193) | 0;
+  }
+  return h >>> 0;
+}
+
+function makeShift(key, pos) {
+  const seed = hashKey(key);
+  let x = (seed + pos * 0x9E3779B9) | 0;
+  x = (x ^ (x >>> 16)) * 0x45d9f3b | 0;
+  x = (x ^ (x >>> 16)) * 0x45d9f3b | 0;
+  x = x ^ (x >>> 16);
+  return (x >>> 0) % 256; // 偏移范围 0 ~ 255，保持字符在可显示区域附近
+}
+
+// ---- 加解密 ----
+// 安全移位：确保结果不落在代理区（U+D800-U+DFFF）
+function safeShift(pos, delta) {
+  let p = (pos + delta) % SAFE_TOTAL;
+  if (p < 0) p += SAFE_TOTAL;
+  while (isControl(fwdMap[p])) p = (p + 1) % SAFE_TOTAL;
+  return p;
+}
+
+function encrypt(text, key) {
+  let result = '';
+  let cp = 0; // 码点序号（代理对算 1 个）
+  for (let i = 0; i < text.length; i++) {
+    const code = text.codePointAt(i);
+    const safePos = revMap[code];
+    if (safePos === -1) {
+      result += String.fromCodePoint(code);
+    } else {
+      const shift = makeShift(key, cp);
+      const newPos = safeShift(safePos, shift);
+      result += String.fromCodePoint(fwdMap[newPos]);
+    }
+    if (code > 0xFFFF) i++;
+    cp++;
+  }
+  return result;
+}
+
+function decrypt(cipher, key) {
+  let result = '';
+  let cp = 0; // 码点序号（代理对算 1 个）
+  for (let i = 0; i < cipher.length; i++) {
+    const code = cipher.codePointAt(i);
+    const safePos = revMap[code];
+    if (safePos === -1) {
+      result += String.fromCodePoint(code);
+    } else {
+      const shift = makeShift(key, cp);
+      const newPos = safeShift(safePos, -shift);
+      result += String.fromCodePoint(fwdMap[newPos]);
+    }
+    if (code > 0xFFFF) i++;
+    cp++;
+  }
+  return result;
+}
+
+function getKeyString() {
+  const k = document.getElementById('key').value;
+  if (!k) throw new Error('请输入密钥字符串');
+  return k;
+}
+
+function doEncrypt() {
+  try {
+    let text = document.getElementById('input').value;
+    const key = getKeyString();
+    const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
+    if (!text) { showToast('请输入要加密的文本'); return; }
+    for (let r = 0; r < rounds; r++) text = encrypt(text, key);
+    document.getElementById('output').value = text;
+    showToast(`加密完成（${rounds} 轮）`);
+  } catch (e) { alert(e.message); }
+}
+
+function doDecrypt() {
+  try {
+    let text = document.getElementById('input').value;
+    const key = getKeyString();
+    const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
+    if (!text) { showToast('请输入要解密的密文'); return; }
+    for (let r = 0; r < rounds; r++) text = decrypt(text, key);
+    document.getElementById('output').value = text;
+    showToast(`解密完成（${rounds} 轮）`);
+  } catch (e) { alert(e.message); }
+}
+
+function copyResult() {
+  const output = document.getElementById('output');
+  const text = output.value;
+  if (!text) { showToast('没有可复制的内容'); return; }
+  const done = () => { output.select(); showToast('已复制到剪贴板'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('已复制到剪贴板');
+  } catch (e) {
+    showToast('复制失败，请手动选择文本复制');
+  }
+  document.body.removeChild(ta);
+}
+
+function clearAll() {
+  document.getElementById('input').value = '';
+  document.getElementById('output').value = '';
+  document.getElementById('input').focus();
+  showToast('已清空');
+}
+
+function swapToInput() {
+  const output = document.getElementById('output');
+  if (!output.value) { showToast('没有可回填的内容'); return; }
+  document.getElementById('input').value = output.value;
+  output.value = '';
+  document.getElementById('input').focus();
+  showToast('已回填到输入框');
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+// Real-time offset badge
+document.getElementById('key').addEventListener('input', function() {
+  const badge = document.getElementById('offsetBadge');
+  const val = document.getElementById('offsetVal');
+  const k = this.value;
+  if (!k) { badge.classList.remove('show'); return; }
+  val.textContent = '0x' + hashKey(k).toString(16).toUpperCase().padStart(8, '0');
+  badge.classList.add('show');
+});
+
+(function() {
+  const k = document.getElementById('key').value;
+  if (k) {
+    document.getElementById('offsetVal').textContent = '0x' + hashKey(k).toString(16).toUpperCase().padStart(8, '0');
+    document.getElementById('offsetBadge').classList.add('show');
+  }
+})();
+</script>
+</body>
+</html>

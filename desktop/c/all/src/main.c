@@ -1,0 +1,957 @@
+// all-main.c - 文本 + 图片 加解密工具（Tab 切换合并版）
+#include <windows.h>
+#include <commctrl.h>
+#include <commdlg.h>
+#include <windowsx.h>
+#include <shellapi.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <wchar.h>
+#include <math.h>
+#include "crypto.h"
+#include "crypto_img.h"
+#include "png.h"
+#include "img/image_decode.h"
+
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+#ifndef ICC_UPDOWN_CLASSES
+#define ICC_UPDOWN_CLASSES 0x00000400
+#endif
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((void*)-4)
+#endif
+
+// ====== Tab 控件 ID ======
+#define ID_TAB_TEXT     1001
+#define ID_TAB_IMAGE    1002
+
+// ====== 文本工具控件 ID ======
+#define ID_T_ENC     2001
+#define ID_T_DEC     2002
+#define ID_T_COPY    2003
+#define ID_T_SWAP    2004
+#define ID_T_CLEAR   2005
+#define ID_T_KEY     2006
+#define ID_T_ROUNDUD 2007
+#define ID_T_ROUND   2008
+#define ID_T_INPUT   2009
+#define ID_T_OUTPUT  2010
+#define ID_T_STATUS  2011
+#define ID_T_SPLIT   2012
+
+// ====== 图片工具控件 ID ======
+#define ID_I_OPEN    3001
+#define ID_I_ENC     3002
+#define ID_I_DEC     3003
+#define ID_I_SAVE    3004
+#define ID_I_KEY     3005
+#define ID_I_ROUND   3006
+#define ID_I_STATUS  3007
+#define ID_I_CHKORIG 3008
+#define ID_I_ZOOM    3009
+
+// ====== DPI ======
+static int g_dpi = 96;
+static int px(int logical) { return MulDiv(logical, g_dpi, 96); }
+
+static HWND g_hwndMain;
+static HFONT g_hFont;
+static int g_active_tab = 0;   // 0=文本 1=图片
+static HWND g_tabText, g_tabImage;
+
+// 前置声明
+static void layout_text(HWND hwnd);
+static void layout_image(HWND hwnd);
+static void i_update_zoom(void);
+
+// ====== 文本工具 ======
+static HWND t_key, t_round, t_roundud, t_input, t_output, t_status, t_split;
+static HWND t_btns[5];
+static HWND t_lblKey, t_lblRound, t_lblIn, t_lblOut;
+static int t_splitY = -1;   // 分割条逻辑位置；-1 表示首次布局时自动设为输入/输出等高
+static int t_dragging = 0;
+static int t_dragStartY = 0;
+
+// ====== 图片工具 ======
+static HWND i_open, i_enc, i_dec, i_save, i_key, i_round, i_status, i_chk, i_zoom;
+static HWND i_lblKey, i_lblRound, i_roundud;
+static HWND i_pic;
+static uint8_t *i_pixels = NULL;
+static uint8_t *i_orig = NULL;
+static int i_w = 0, i_h = 0;
+static int i_dirty = 0;
+static int i_show_orig = 0;
+
+// ====== 文本工具：布局逻辑尺寸 ======
+#define T_FONT      12
+#define T_BTN_H     24
+#define T_BTN_W     68
+#define T_TITLE_H   16
+#define T_MIN_SPLIT 80
+
+// Tab 区高度（顶部偏移）：8 顶边 + 30 Tab高 + 8 间隔
+#define TAB_TOP_OFFSET 46
+
+// ====== 图片工具：布局逻辑尺寸 ======
+#define I_PAD       8
+#define I_BTN_H     30
+#define I_CTRL_H    26
+#define I_BTN_W_OPEN 90
+#define I_BTN_W_MID 70
+#define I_BTN_W_SAVE 90
+#define I_KEY_W     150
+#define I_ROUND_W   50
+#define I_LABEL_W   40
+#define I_STATUS_H  22
+#define I_GAP       8
+#define I_FONT      14
+#define I_ZOOM_W    200
+
+// ====== 共享工具函数 ======
+static void set_text(HWND h, const wchar_t *s) { SetWindowTextW(h, s ? s : L""); }
+
+static wchar_t *get_text(HWND h)
+{
+    int len = GetWindowTextLengthW(h);
+    wchar_t *buf = (wchar_t *)malloc(((size_t)len + 1) * sizeof(wchar_t));
+    if (!buf) return NULL;
+    GetWindowTextW(h, buf, len + 1);
+    return buf;
+}
+
+static void set_status(const wchar_t *s)
+{
+    if (g_active_tab == 0) set_text(t_status, s);
+    else set_text(i_status, s);
+}
+
+static HFONT make_font(int h)
+{
+    return CreateFontW(-px(h), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
+}
+
+// ====== Tab 切换 ======
+static void show_text_tab(void) { ShowWindow(t_key, SW_SHOW); ShowWindow(t_round, SW_SHOW); ShowWindow(t_roundud, SW_SHOW); ShowWindow(t_input, SW_SHOW); ShowWindow(t_output, SW_SHOW); ShowWindow(t_status, SW_SHOW); ShowWindow(t_split, SW_SHOW); ShowWindow(t_lblKey, SW_SHOW); ShowWindow(t_lblRound, SW_SHOW); ShowWindow(t_lblIn, SW_SHOW); ShowWindow(t_lblOut, SW_SHOW); for (int i = 0; i < 5; i++) ShowWindow(t_btns[i], SW_SHOW); }
+static void hide_text_tab(void) { ShowWindow(t_key, SW_HIDE); ShowWindow(t_round, SW_HIDE); ShowWindow(t_roundud, SW_HIDE); ShowWindow(t_input, SW_HIDE); ShowWindow(t_output, SW_HIDE); ShowWindow(t_status, SW_HIDE); ShowWindow(t_split, SW_HIDE); ShowWindow(t_lblKey, SW_HIDE); ShowWindow(t_lblRound, SW_HIDE); ShowWindow(t_lblIn, SW_HIDE); ShowWindow(t_lblOut, SW_HIDE); for (int i = 0; i < 5; i++) ShowWindow(t_btns[i], SW_HIDE); }
+static void show_image_tab(void) { ShowWindow(i_open, SW_SHOW); ShowWindow(i_enc, SW_SHOW); ShowWindow(i_dec, SW_SHOW); ShowWindow(i_save, SW_SHOW); ShowWindow(i_lblKey, SW_SHOW); ShowWindow(i_key, SW_SHOW); ShowWindow(i_lblRound, SW_SHOW); ShowWindow(i_round, SW_SHOW); ShowWindow(i_roundud, SW_SHOW); ShowWindow(i_status, SW_SHOW); ShowWindow(i_chk, SW_SHOW); ShowWindow(i_zoom, SW_SHOW); ShowWindow(i_pic, SW_SHOW); }
+  static void hide_image_tab(void) { ShowWindow(i_open, SW_HIDE); ShowWindow(i_enc, SW_HIDE); ShowWindow(i_dec, SW_HIDE); ShowWindow(i_save, SW_HIDE); ShowWindow(i_lblKey, SW_HIDE); ShowWindow(i_key, SW_HIDE); ShowWindow(i_lblRound, SW_HIDE); ShowWindow(i_round, SW_HIDE); ShowWindow(i_roundud, SW_HIDE); ShowWindow(i_status, SW_HIDE); ShowWindow(i_chk, SW_HIDE); ShowWindow(i_zoom, SW_HIDE); ShowWindow(i_pic, SW_HIDE); }
+
+static void switch_tab(int tab)
+{
+    g_active_tab = tab;
+    // 激活的标签页按钮置灰不可点，另一个可点
+    EnableWindow(g_tabText, tab == 1);
+    EnableWindow(g_tabImage, tab == 0);
+    if (tab == 0) { hide_image_tab(); show_text_tab(); layout_text(g_hwndMain); }
+    else { hide_text_tab(); show_image_tab(); layout_image(g_hwndMain); }
+    InvalidateRect(g_hwndMain, NULL, TRUE);
+}
+
+// ====== 文本工具：转 LF 为 CRLF ======
+static wchar_t *to_win_lf(const wchar_t *s)
+{
+    if (!s || !wcschr(s, L'\n')) return wcsdup(s ? s : L"");
+    int cap = (int)(wcslen(s) * 1.1 + 16);
+    wchar_t *out = (wchar_t *)malloc((size_t)cap * sizeof(wchar_t));
+    if (!out) return NULL;
+    int j = 0;
+    for (int i = 0; s[i]; i++)
+    {
+        if (s[i] == L'\n' && (i == 0 || s[i - 1] != L'\r'))
+        {
+            if (j + 2 >= cap) { cap *= 2; out = (wchar_t *)realloc(out, (size_t)cap * sizeof(wchar_t)); }
+            out[j++] = L'\r'; out[j++] = L'\n';
+        }
+        else out[j++] = s[i];
+    }
+    out[j] = 0;
+    return out;
+}
+
+// ====== 文本工具：操作逻辑 ======
+static int t_get_rounds(void)
+{
+    wchar_t *s = get_text(t_round);
+    int r = 1;
+    if (s && s[0]) r = (int)wcstol(s, NULL, 10);
+    free(s);
+    if (r < 1) r = 1;
+    return r;
+}
+
+static void t_transform(int encrypt)
+{
+    wchar_t *key = get_text(t_key);
+    if (!key || !key[0]) { set_status(L"请输入密钥"); free(key); return; }
+    wchar_t *text = get_text(t_input);
+    if (!text || !text[0]) { set_status(L"请输入文本"); free(key); free(text); return; }
+    int rounds = (int)SendMessageW(t_roundud, UDM_GETPOS, 0, 0);
+    if (rounds < 1) rounds = 1;
+    wchar_t *result = encrypt ? crypto_encrypt(text, key, rounds) : crypto_decrypt(text, key, rounds);
+    wchar_t *win_text = to_win_lf(result);
+    set_text(t_output, win_text);
+    set_status(encrypt ? L"加密完成" : L"解密完成");
+    free(key); free(text); free(result); free(win_text);
+}
+
+static void t_copy(void)
+{
+    wchar_t *out = get_text(t_output);
+    if (!out || !out[0]) { set_status(L"没有可复制的内容"); free(out); return; }
+    if (OpenClipboard(g_hwndMain))
+    {
+        EmptyClipboard();
+        size_t sz = (wcslen(out) + 1) * sizeof(wchar_t);
+        HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, sz);
+        if (h) { wchar_t *d = (wchar_t *)GlobalLock(h); memcpy(d, out, sz); GlobalUnlock(h); SetClipboardData(CF_UNICODETEXT, h); }
+        CloseClipboard();
+    }
+    set_status(L"已复制到剪贴板");
+    free(out);
+}
+
+static void t_swap(void)
+{
+    wchar_t *out = get_text(t_output);
+    if (!out || !out[0]) { set_status(L"没有可回填的内容"); free(out); return; }
+    set_text(t_input, out);
+    set_text(t_output, L"");
+    set_status(L"已回填到输入框");
+    free(out); SetFocus(t_input);
+}
+
+static void t_clear(void)
+{
+    set_text(t_key, L"mimo");
+    set_text(t_input, L"");
+    set_text(t_output, L"");
+    SendMessageW(t_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
+    set_status(L"已清空");
+    SetFocus(t_input);
+}
+
+// ====== 文本工具：布局 ======
+static void layout_text(HWND hwnd)
+{
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    int W = rc.right - rc.left;
+    int H = rc.bottom - rc.top;
+
+    int padding = px(8);
+    int top_off = px(TAB_TOP_OFFSET);
+    int status_h = px(22);
+    int splitter_h = px(4);
+    int minSplit = px(T_MIN_SPLIT);
+    int btn_h = px(T_BTN_H);
+    int btn_w = px(T_BTN_W);
+    int btn_gap = px(6);
+    int label_w = px(34);
+    int label_gap = px(4);
+    int key_input_w = px(180);
+    int round_label_w = px(34);
+    int round_w = px(60);
+    int round_updown_w = px(16);
+    int row_y_gap = px(6);
+
+    // 顶栏第一行内容宽度（密钥+轮次），按钮从其后开始
+    int row0_content = padding + label_w + label_gap + key_input_w + px(12)
+        + round_label_w + label_gap + round_w + round_updown_w + px(16);
+    int btn_start_x = row0_content;
+    int btn_row_w = btn_w * 5 + btn_gap * 4;
+
+    int top_row_h = btn_h + row_y_gap;
+    int top_bar_h, btn_row1_count = 0, btn_row2_count = 0;
+
+    if (btn_start_x + btn_row_w <= W - padding)
+    {
+        btn_row1_count = 5;
+        top_bar_h = top_row_h;
+    }
+    else
+    {
+        btn_row1_count = 0; btn_row2_count = 0;
+        int avail_row1 = (W - padding) - btn_start_x;
+        int remaining = 5, cur_w = 0;
+        for (int i = 0; i < 5 && remaining > 0; i++)
+        {
+            int add = btn_w + (i > 0 ? btn_gap : 0);
+            if (cur_w + add > avail_row1 && btn_row1_count > 0) break;
+            cur_w += add; btn_row1_count++; remaining--;
+        }
+        btn_row2_count = remaining;
+        top_bar_h = top_row_h * 2 + row_y_gap;
+    }
+
+    int title_h = px(T_TITLE_H);
+    int title_gap = px(2);
+    int mid_y = top_off + padding + top_bar_h + row_y_gap + title_h + title_gap;
+    int mid_h = H - mid_y - padding - status_h - padding;
+
+    // 首次布局：自动计算分割条位置，使输入框/输出框高度相等
+    if (t_splitY < 0)
+    {
+        int eq = (H - status_h - padding - mid_y - splitter_h - 2 * title_gap - title_h + px(2)) / 2;
+        int eq_min = px(T_MIN_SPLIT);
+        int eq_max = mid_h - eq_min - splitter_h;
+        if (eq < eq_min) eq = eq_min;
+        if (eq > eq_max) eq = eq_max;
+        t_splitY = MulDiv(eq, 96, g_dpi);
+    }
+
+    int sp = px(t_splitY);
+    int max_split = mid_h - minSplit - splitter_h;
+    if (max_split < minSplit) max_split = minSplit;
+    if (sp < minSplit) sp = minSplit;
+    if (sp > max_split) sp = max_split;
+    int splitter_top = mid_y + sp;
+
+    int y = top_off + padding + row_y_gap / 2;
+    int x = padding;
+
+    MoveWindow(t_lblKey, x, y, label_w, btn_h, TRUE); x += label_w + label_gap;
+    MoveWindow(t_key, x, y, key_input_w, btn_h, TRUE); x += key_input_w + px(12);
+    MoveWindow(t_lblRound, x, y, round_label_w, btn_h, TRUE); x += round_label_w + label_gap;
+    MoveWindow(t_round, x, y, round_w, btn_h, TRUE);
+    MoveWindow(t_roundud, x + round_w, y, round_updown_w, btn_h, TRUE);
+    x += round_w + round_updown_w + px(16);
+
+    for (int i = 0; i < btn_row1_count; i++) { MoveWindow(t_btns[i], x, y, btn_w, btn_h, TRUE); x += btn_w + btn_gap; }
+
+    if (btn_row2_count > 0)
+    {
+        int y2 = y + btn_h + row_y_gap;
+        x = padding;
+        for (int i = btn_row1_count; i < 5; i++) { MoveWindow(t_btns[i], x, y2, btn_w, btn_h, TRUE); x += btn_w + btn_gap; }
+    }
+
+    int title_y = top_off + padding + top_bar_h + row_y_gap;
+    MoveWindow(t_lblIn, padding, title_y, W - padding * 2, title_h, TRUE);
+
+    int input_y = title_y + title_h + title_gap;
+    MoveWindow(t_input, padding, input_y, W - padding * 2, splitter_top - input_y - px(2), TRUE);
+
+    MoveWindow(t_split, padding, splitter_top, W - padding * 2, splitter_h, TRUE);
+
+    int output_title_y = splitter_top + splitter_h + title_gap;
+    MoveWindow(t_lblOut, padding, output_title_y, W - padding * 2, title_h, TRUE);
+    int output_y = output_title_y + title_h + title_gap;
+    MoveWindow(t_output, padding, output_y, W - padding * 2, (H - status_h - padding) - output_y, TRUE);
+
+    MoveWindow(t_status, padding, H - status_h - padding, W - padding * 2, status_h, TRUE);
+}
+
+// ====== 文本工具：创建控件 ======
+static void create_text_controls(HWND hwnd)
+{
+    HMODULE mod = GetModuleHandleW(NULL);
+    t_lblIn = CreateWindowExW(0, L"STATIC", L"输入文本", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(80), px(T_TITLE_H), hwnd, NULL, mod, NULL);
+    t_lblOut = CreateWindowExW(0, L"STATIC", L"输出结果", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(80), px(T_TITLE_H), hwnd, NULL, mod, NULL);
+    t_lblKey = CreateWindowExW(0, L"STATIC", L"密钥", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(34), px(T_BTN_H), hwnd, NULL, mod, NULL);
+    t_lblRound = CreateWindowExW(0, L"STATIC", L"轮次", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(34), px(T_BTN_H), hwnd, NULL, mod, NULL);
+    t_key = CreateWindowExW(0, L"EDIT", L"mimo", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 0, 0, px(180), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ID_T_KEY, mod, NULL);
+    t_round = CreateWindowExW(0, L"EDIT", L"1", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 0, 0, px(60), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ID_T_ROUND, mod, NULL);
+    t_roundud = CreateWindowExW(0, UPDOWN_CLASSW, L"", WS_CHILD | WS_VISIBLE | UDS_ARROWKEYS | UDS_SETBUDDYINT, 0, 0, px(16), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ID_T_ROUNDUD, mod, NULL);
+    SendMessageW(t_roundud, UDM_SETBUDDY, (WPARAM)t_round, 0);
+    SendMessageW(t_roundud, UDM_SETRANGE, 0, MAKELONG(99, 1));
+    SendMessageW(t_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
+
+    int ids[] = { ID_T_ENC, ID_T_DEC, ID_T_COPY, ID_T_SWAP, ID_T_CLEAR };
+    const wchar_t *txts[] = { L"加密", L"解密", L"复制", L"回填", L"清空" };
+    for (int i = 0; i < 5; i++)
+        t_btns[i] = CreateWindowExW(0, L"BUTTON", txts[i], WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, px(T_BTN_W), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ids[i], mod, NULL);
+
+    t_input = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_INPUT, mod, NULL);
+    t_split = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 0, 0, px(100), px(4), hwnd, (HMENU)(LONG_PTR)ID_T_SPLIT, mod, NULL);
+    t_output = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_OUTPUT, mod, NULL);
+    t_status = CreateWindowExW(0, L"STATIC", L"就绪", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(100), px(22), hwnd, (HMENU)(LONG_PTR)ID_T_STATUS, mod, NULL);
+}
+
+// ====== 图片工具：文件读取 ======
+static uint8_t *i_read_file(const wchar_t *path, size_t *len_out)
+{
+    FILE *f = _wfopen(path, L"rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (n <= 0) { fclose(f); return NULL; }
+    uint8_t *buf = (uint8_t *)malloc((size_t)n);
+    if (!buf) { fclose(f); return NULL; }
+    fread(buf, 1, (size_t)n, f);
+    fclose(f);
+    *len_out = (size_t)n;
+    return buf;
+}
+
+static int i_load(const wchar_t *path)
+{
+    int w, h;
+    uint8_t *px = NULL;
+    int rc = image_decode_file(path, &w, &h, &px);
+    if (rc != 0) { set_status(L"不是有效的图片"); return 0; }
+    free(i_pixels); free(i_orig);
+    i_pixels = px;
+    i_orig = (uint8_t *)malloc((size_t)w * h * 4);
+    if (i_orig) memcpy(i_orig, px, (size_t)w * h * 4);
+    i_w = w; i_h = h;
+    i_dirty = 0; i_show_orig = 0;
+    SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
+    wchar_t info[160];
+    swprintf(info, 160, L"已加载: %d x %d (%d KB)", w, h, (int)((size_t)w * h * 4 / 1024));
+    set_status(info);
+    InvalidateRect(i_pic, NULL, TRUE);
+    i_update_zoom();
+    EnableWindow(i_enc, TRUE);
+    EnableWindow(i_dec, TRUE);
+    EnableWindow(i_save, FALSE);
+    return 1;
+}
+
+static void i_open_file(void)
+{
+    OPENFILENAMEW ofn = {0};
+    wchar_t file[1024] = L"";
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFilter = L"图片文件 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG 图片 (*.png)\0*.png\0JPEG 图片 (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP 图片 (*.bmp)\0*.bmp\0所有文件 (*.*)\0*.*\0";
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = 1024;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    if (GetOpenFileNameW(&ofn)) i_load(file);
+}
+
+static int i_rounds(void)
+{
+    int r = (int)SendMessageW(i_roundud, UDM_GETPOS, 0, 0);
+    if (r < 1) r = 1;
+    if (r > 99) r = 99;
+    return r;
+}
+
+static void i_transform(int enc)
+{
+    if (!i_pixels) { set_status(L"请先打开图片"); return; }
+    wchar_t *key = get_text(i_key);
+    if (!key || !key[0]) { set_status(L"请输入密钥"); free(key); return; }
+    int rounds = i_rounds();
+    if (enc) img_encrypt(i_pixels, key, rounds, i_w, i_h);
+    else img_decrypt(i_pixels, key, rounds, i_w, i_h);
+    wchar_t info[160];
+    swprintf(info, 160, L"%s完成（%d 轮） | %d x %d", enc ? L"加密" : L"解密", rounds, i_w, i_h);
+    set_status(info);
+    i_dirty = 1; i_show_orig = 0;
+    SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
+    EnableWindow(i_save, TRUE);
+    InvalidateRect(i_pic, NULL, TRUE);
+    free(key);
+}
+
+static void i_save_file(void)
+{
+    if (!i_pixels || !i_dirty) return;
+    OPENFILENAMEW ofn = {0};
+    wchar_t file[1024] = L"";
+    wcscpy(file, L"output.png");
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFilter = L"PNG 图片 (*.png)\0*.png\0";
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = 1024;
+    ofn.Flags = OFN_OVERWRITEPROMPT;
+    ofn.lpstrDefExt = L"png";
+    if (!GetSaveFileNameW(&ofn)) return;
+    size_t cap = (size_t)i_w * i_h * 4 * 2 + 4096;
+    uint8_t *png = (uint8_t *)malloc(cap);
+    size_t plen = png_encode(i_pixels, i_w, i_h, png, cap);
+    if (plen == 0) { set_status(L"PNG 编码失败"); free(png); return; }
+    FILE *f = _wfopen(file, L"wb");
+    if (f) { fwrite(png, 1, plen, f); fclose(f); set_status(L"已保存"); }
+    else set_status(L"保存失败");
+    free(png);
+}
+
+// ====== 图片工具：绘制预览 ======
+static void i_draw(HWND hwnd, HDC hdc)
+{
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    FillRect(hdc, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
+      if (!i_pixels || i_w <= 0 || i_h <= 0)
+      {
+        SetTextColor(hdc, RGB(120, 120, 120));
+        SetBkMode(hdc, TRANSPARENT);
+        HFONT oldFont = (HFONT)SelectObject(hdc, g_hFont);
+        const wchar_t *msg = L"点击「打开图片」或拖入图片文件（PNG/JPG/BMP）";
+        RECT tr = rc;
+        DrawTextW(hdc, msg, -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(hdc, oldFont);
+        return;
+    }
+
+    int cw = rc.right - rc.left, ch = rc.bottom - rc.top;
+    double sx = (double)cw / i_w, sy = (double)ch / i_h;
+    double s = sx < sy ? sx : sy;
+    int dw = (int)(i_w * s), dh = (int)(i_h * s);
+    if (dw < 1) dw = 1; if (dh < 1) dh = 1;
+    int dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+
+    const uint8_t *src = (i_show_orig && i_orig) ? i_orig : i_pixels;
+    size_t npx = (size_t)i_w * i_h;
+    uint8_t *bgra = (uint8_t *)malloc(npx * 4);
+    if (!bgra) return;
+    // 与白色背景（#ffffff）做 alpha 混合：透明像素显示为白，半透明平滑过渡
+    for (size_t i = 0; i < npx; i++)
+    {
+        int a = src[i*4+3];
+        int inv = 255 - a;
+        bgra[i*4]   = (uint8_t)((src[i*4+2] * a + 255 * inv) / 255);
+        bgra[i*4+1] = (uint8_t)((src[i*4+1] * a + 255 * inv) / 255);
+        bgra[i*4+2] = (uint8_t)((src[i*4]   * a + 255 * inv) / 255);
+        bgra[i*4+3] = 255;
+    }
+    SetStretchBltMode(hdc, HALFTONE);
+    SetBrushOrgEx(hdc, 0, 0, NULL);
+    BITMAPINFO bmi = {0};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = i_w;
+    bmi.bmiHeader.biHeight = -i_h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    StretchDIBits(hdc, dx, dy, dw, dh, 0, 0, i_w, i_h, bgra, &bmi, DIB_RGB_COLORS, SRCCOPY);
+    free(bgra);
+}
+
+// ====== 图片工具：更新状态栏右端缩放信息 ======
+static void i_update_zoom(void)
+{
+    if (!i_zoom) return;
+    wchar_t buf[96];
+    if (i_pixels && i_w > 0 && i_h > 0 && i_pic)
+    {
+        RECT rc;
+        GetClientRect(i_pic, &rc);
+        int cw = rc.right - rc.left, ch = rc.bottom - rc.top;
+        double sx = (double)cw / i_w, sy = (double)ch / i_h;
+        double s = sx < sy ? sx : sy;
+        int pct = (int)(s * 100 + 0.5);
+        swprintf(buf, 96, L"%d x %d · %d%%", i_w, i_h, pct);
+    }
+    else swprintf(buf, 96, L"");
+    SetWindowTextW(i_zoom, buf);
+}
+
+// ====== 图片工具：布局 ======
+static void layout_image(HWND hwnd)
+{
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    int W = rc.right - rc.left;
+    int H = rc.bottom - rc.top;
+
+    int pad = px(I_PAD), gap = px(I_GAP);
+    int btn_h = px(I_BTN_H), ctrl_h = px(I_CTRL_H), status_h = px(I_STATUS_H);
+    int top_y = pad + px(TAB_TOP_OFFSET);
+    int label_top = top_y + (btn_h - ctrl_h) / 2;
+
+    int x = pad;
+    MoveWindow(i_open, x, top_y, px(I_BTN_W_OPEN), btn_h, TRUE); x += px(I_BTN_W_OPEN) + gap;
+    MoveWindow(i_enc, x, top_y, px(I_BTN_W_MID), btn_h, TRUE); x += px(I_BTN_W_MID) + gap;
+    MoveWindow(i_dec, x, top_y, px(I_BTN_W_MID), btn_h, TRUE); x += px(I_BTN_W_MID) + gap;
+    MoveWindow(i_save, x, top_y, px(I_BTN_W_SAVE), btn_h, TRUE); x += px(I_BTN_W_SAVE) + gap * 2;
+    // 密钥：标签 + 输入框
+    MoveWindow(i_lblKey, x, label_top, px(34), ctrl_h, TRUE); x += px(34) + px(4);
+    MoveWindow(i_key, x, label_top, px(I_KEY_W), ctrl_h, TRUE); x += px(I_KEY_W) + gap;
+    // 轮次：标签 + 输入框 + UpDown
+    MoveWindow(i_lblRound, x, label_top, px(34), ctrl_h, TRUE); x += px(34) + px(4);
+    MoveWindow(i_round, x, label_top, px(I_ROUND_W), ctrl_h, TRUE);
+    MoveWindow(i_roundud, x + px(I_ROUND_W), label_top, px(16), ctrl_h, TRUE);
+    x += px(I_ROUND_W) + px(16) + gap;
+    MoveWindow(i_chk, x, label_top, px(90), ctrl_h, TRUE);
+
+    int pic_top = top_y + btn_h + pad;
+    int pic_bottom = H - status_h - pad;
+    if (pic_bottom < pic_top + px(40)) pic_bottom = pic_top + px(40);
+    MoveWindow(i_pic, pad, pic_top, W - pad * 2, pic_bottom - pic_top, TRUE);
+
+    int status_y = H - status_h - pad;
+    int zoom_w = px(I_ZOOM_W);
+    MoveWindow(i_status, pad, status_y, W - pad * 2 - zoom_w - gap, status_h, TRUE);
+    MoveWindow(i_zoom, W - pad - zoom_w, status_y, zoom_w, status_h, TRUE);
+    i_update_zoom();
+}
+
+// ====== 图片工具：创建控件 ======
+static void create_image_controls(HWND hwnd)
+{
+    HMODULE mod = GetModuleHandleW(NULL);
+    i_open = CreateWindowExW(0, L"BUTTON", L"打开图片", WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_OPEN, mod, NULL);
+    i_enc = CreateWindowExW(0, L"BUTTON", L"加密", WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ENC, mod, NULL);
+    i_dec = CreateWindowExW(0, L"BUTTON", L"解密", WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_DEC, mod, NULL);
+    i_save = CreateWindowExW(0, L"BUTTON", L"保存 PNG", WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_SAVE, mod, NULL);
+    i_lblKey = CreateWindowExW(0, L"STATIC", L"密钥", WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
+    i_key = CreateWindowExW(0, L"EDIT", L"mimo", WS_CHILD | WS_BORDER | ES_AUTOHSCROLL, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_KEY, mod, NULL);
+    i_lblRound = CreateWindowExW(0, L"STATIC", L"轮次", WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
+    i_round = CreateWindowExW(0, L"EDIT", L"1", WS_CHILD | WS_BORDER | ES_NUMBER, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ROUND, mod, NULL);
+    i_roundud = CreateWindowExW(0, UPDOWN_CLASSW, L"", WS_CHILD | UDS_ARROWKEYS | UDS_SETBUDDYINT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
+    SendMessageW(i_roundud, UDM_SETBUDDY, (WPARAM)i_round, 0);
+    SendMessageW(i_roundud, UDM_SETRANGE, 0, MAKELONG(99, 1));
+    SendMessageW(i_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
+    i_chk = CreateWindowExW(0, L"BUTTON", L"显示原图", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_CHKORIG, mod, NULL);
+    i_pic = CreateWindowExW(WS_EX_CLIENTEDGE, L"ImgEncryptPicBox", L"", WS_CHILD, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
+    i_status = CreateWindowExW(0, L"STATIC", L"点击「打开图片」或拖入图片文件（PNG/JPG/BMP）", WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_STATUS, mod, NULL);
+    i_zoom = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_RIGHT, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ZOOM, mod, NULL);
+}
+
+// ====== 图片预览框窗口过程 ======
+static LRESULT CALLBACK PicWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    switch (msg)
+    {
+    case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            i_draw(hwnd, hdc);
+            EndPaint(hwnd, &ps);
+        }
+        return 0;
+      case WM_SIZE:
+          InvalidateRect(hwnd, NULL, TRUE);
+          i_update_zoom();
+          return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    default:
+        return DefWindowProcW(hwnd, msg, wp, lp);
+    }
+}
+
+// ====== 统一字体应用 ======
+static void apply_font_all(void)
+{
+    // Tab
+    SendMessageW(g_tabText, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(g_tabImage, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    // 文本
+    SendMessageW(t_lblKey, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_lblRound, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_lblIn, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_lblOut, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_key, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_round, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_roundud, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_input, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_output, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(t_status, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    for (int i = 0; i < 5; i++) SendMessageW(t_btns[i], WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    // 图片
+    SendMessageW(i_open, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_enc, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_dec, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_save, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_lblKey, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_key, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_lblRound, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_round, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_roundud, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_chk, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_status, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_zoom, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_pic, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+}
+
+// ====== 主窗口过程 ======
+static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    switch (msg)
+    {
+    case WM_COMMAND:
+        switch (LOWORD(wp))
+        {
+        // Tab
+        case ID_TAB_TEXT: switch_tab(0); break;
+        case ID_TAB_IMAGE: switch_tab(1); break;
+        // 文本
+        case ID_T_ENC: t_transform(1); break;
+        case ID_T_DEC: t_transform(0); break;
+        case ID_T_COPY: t_copy(); break;
+        case ID_T_SWAP: t_swap(); break;
+        case ID_T_CLEAR: t_clear(); break;
+        // 图片
+        case ID_I_OPEN: i_open_file(); break;
+        case ID_I_ENC: i_transform(1); break;
+        case ID_I_DEC: i_transform(0); break;
+        case ID_I_SAVE: i_save_file(); break;
+        case ID_I_CHKORIG:
+            i_show_orig = (SendMessageW(i_chk, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            InvalidateRect(i_pic, NULL, TRUE);
+            break;
+        }
+        break;
+
+    case WM_DROPFILES:
+        {
+            // 拖拽文件放入：切换到图片 Tab 并加载
+            HDROP hDrop = (HDROP)wp;
+            wchar_t path[1024];
+            UINT n = DragQueryFileW(hDrop, 0, path, 1024);
+            if (n > 0)
+            {
+                if (g_active_tab != 1) switch_tab(1);
+                i_load(path);
+            }
+            DragFinish(hDrop);
+        }
+        break;
+
+    case WM_SIZE:
+        if (g_active_tab == 0) layout_text(hwnd);
+        else layout_image(hwnd);
+        break;
+
+    case WM_DPICHANGED:
+        {
+            g_dpi = (int)LOWORD(wp);
+            if (g_hFont) DeleteObject(g_hFont);
+            g_hFont = make_font(g_active_tab == 0 ? T_FONT : I_FONT);
+            apply_font_all();
+            RECT *prc = (RECT *)lp;
+            SetWindowPos(hwnd, NULL, prc->left, prc->top,
+                prc->right - prc->left, prc->bottom - prc->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+            if (g_active_tab == 0) layout_text(hwnd); else layout_image(hwnd);
+        }
+        break;
+
+    case WM_MOUSEMOVE:
+        if (g_active_tab == 0 && t_dragging)
+        {
+            int mouse_y = (int)GET_Y_LPARAM(lp);
+            int delta_phys = mouse_y - t_dragStartY;
+            int delta_logical = MulDiv(delta_phys, 96, g_dpi);
+            int new_logical = t_splitY + delta_logical;
+            RECT rc2; GetClientRect(hwnd, &rc2);
+            int H_logical = MulDiv(rc2.bottom - rc2.top, 96, g_dpi);
+            int minSplit_logical = T_MIN_SPLIT;
+            int max_logical = H_logical - 22 - 20 - 2 - minSplit_logical - 4;
+            if (max_logical < minSplit_logical) max_logical = minSplit_logical;
+            if (new_logical < minSplit_logical) new_logical = minSplit_logical;
+            if (new_logical > max_logical) new_logical = max_logical;
+            if (new_logical != t_splitY)
+            {
+                t_splitY = new_logical;
+                t_dragStartY = mouse_y;
+                layout_text(hwnd);
+            }
+        }
+        break;
+
+    case WM_LBUTTONDOWN:
+        if (g_active_tab == 0)
+        {
+            POINT pt = { (int)GET_X_LPARAM(lp), (int)GET_Y_LPARAM(lp) };
+            RECT rc; GetClientRect(t_split, &rc);
+            MapWindowPoints(t_split, hwnd, (LPPOINT)&rc, 2);
+            int hot = px(6);
+            RECT hot_rc = { rc.left, rc.top - hot, rc.right, rc.bottom + hot };
+            if (pt.x >= hot_rc.left && pt.x <= hot_rc.right && pt.y >= hot_rc.top && pt.y <= hot_rc.bottom)
+            {
+                t_dragging = 1;
+                SetCapture(hwnd);
+                t_dragStartY = pt.y;
+            }
+        }
+        break;
+
+    case WM_LBUTTONUP:
+        if (t_dragging) { t_dragging = 0; ReleaseCapture(); }
+        break;
+
+    case WM_SETCURSOR:
+        if (g_active_tab == 0)
+        {
+            // 悬停分割条时显示调整光标；否则交给系统处理（含边框 resize 光标）
+            POINT pt; GetCursorPos(&pt);
+            ScreenToClient(hwnd, &pt);
+            RECT rc; GetClientRect(t_split, &rc);
+            MapWindowPoints(t_split, hwnd, (LPPOINT)&rc, 2);
+            int hot = px(6);
+            RECT hot_rc = { rc.left, rc.top - hot, rc.right, rc.bottom + hot };
+            if (pt.x >= hot_rc.left && pt.x <= hot_rc.right && pt.y >= hot_rc.top && pt.y <= hot_rc.bottom)
+            {
+                SetCursor(LoadCursorW(NULL, (LPCWSTR)MAKEINTRESOURCEW(IDC_SIZENS)));
+                return TRUE;
+            }
+            return DefWindowProcW(hwnd, msg, wp, lp);
+        }
+        return DefWindowProcW(hwnd, msg, wp, lp);
+
+    case WM_DESTROY:
+        free(i_pixels); free(i_orig);
+        if (g_hFont) DeleteObject(g_hFont);
+        PostQuitMessage(0);
+        break;
+
+    default:
+        return DefWindowProcW(hwnd, msg, wp, lp);
+    }
+    return 0;
+}
+
+// ====== DPI 感知 ======
+static void enable_dpi_awareness(void)
+{
+    typedef BOOL(WINAPI *SetProcessDpiAwarenessContext_t)(void*);
+    typedef BOOL(WINAPI *SetProcessDPIAware_t)(void);
+    HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
+    if (!hUser32) return;
+    SetProcessDpiAwarenessContext_t pC = (SetProcessDpiAwarenessContext_t)
+        GetProcAddress(hUser32, "SetProcessDpiAwarenessContext");
+    if (pC && pC(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) return;
+    SetProcessDPIAware_t pLegacy = (SetProcessDPIAware_t)
+        GetProcAddress(hUser32, "SetProcessDPIAware");
+    if (pLegacy) pLegacy();
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
+{
+    enable_dpi_awareness();
+
+    // --selftest 支持
+    for (const wchar_t *p = GetCommandLineW(); *p; p++)
+    {
+        if (p[0] == L'-' && wcsncmp(p, L"--selftest", 10) == 0 &&
+            (p[10] == 0 || p[10] == L' ' || p[10] == L'\t'))
+        {
+            int r = crypto_selftest() ? 0 : 1;
+            ExitProcess((UINT)r);
+        }
+    }
+
+    int demo = 0;
+    for (char *p = lpCmd; p && *p; p++)
+        if (strstr(p, "--demo")) demo = 1;
+
+    // 公共控件
+    INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_UPDOWN_CLASSES };
+    InitCommonControlsEx(&icc);
+
+    // 注册图片预览类
+    WNDCLASSEXW wcPic = {0};
+    wcPic.cbSize = sizeof(wcPic);
+    wcPic.lpfnWndProc = PicWndProc;
+    wcPic.hInstance = hInstance;
+    wcPic.hCursor = LoadCursorW(NULL, (LPCWSTR)MAKEINTRESOURCEW(IDC_ARROW));
+    wcPic.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    wcPic.lpszClassName = L"ImgEncryptPicBox";
+    RegisterClassExW(&wcPic);
+
+    // 注册主窗口类
+    WNDCLASSEXW wc = {0};
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.hCursor = LoadCursorW(NULL, (LPCWSTR)MAKEINTRESOURCEW(IDC_ARROW));
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.lpszClassName = L"AllEncryptApp";
+    wc.hIcon = LoadIconW(hInstance, (LPCWSTR)MAKEINTRESOURCEW(1));
+      wc.hIconSm = wc.hIcon;
+    RegisterClassExW(&wc);
+
+    // 初始 DPI
+    {
+        typedef UINT(WINAPI *GetDpiForSystem_t)(void);
+        HMODULE hU = GetModuleHandleW(L"user32.dll");
+        if (hU)
+        {
+            GetDpiForSystem_t p = (GetDpiForSystem_t)GetProcAddress(hU, "GetDpiForSystem");
+            if (p) g_dpi = (int)p();
+        }
+    }
+
+    int win_w = px(960), win_h = px(720);
+    g_hwndMain = CreateWindowExW(0, L"AllEncryptApp", L"加解密工具",
+        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, win_w, win_h,
+        NULL, NULL, hInstance, NULL);
+
+    // 接受拖拽文件放入
+    DragAcceptFiles(g_hwndMain, TRUE);
+
+    // ===== Tab 按钮 =====
+    g_tabText = CreateWindowExW(0, L"BUTTON", L"文本加解密", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        0, 0, 10, 10, g_hwndMain, (HMENU)(LONG_PTR)ID_TAB_TEXT, hInstance, NULL);
+    g_tabImage = CreateWindowExW(0, L"BUTTON", L"图片加解密", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        0, 0, 10, 10, g_hwndMain, (HMENU)(LONG_PTR)ID_TAB_IMAGE, hInstance, NULL);
+
+    // ===== 文本工具控件 =====
+    create_text_controls(g_hwndMain);
+    // ===== 图片工具控件 =====
+    create_image_controls(g_hwndMain);
+
+    // 字体
+    g_hFont = make_font(T_FONT);
+    apply_font_all();
+
+    // 初始状态
+    EnableWindow(i_enc, FALSE);
+    EnableWindow(i_dec, FALSE);
+    EnableWindow(i_save, FALSE);
+
+    // 初始布局（含 Tab 位置）
+    RECT cr; GetClientRect(g_hwndMain, &cr);
+    int cw = cr.right - cr.left;
+    MoveWindow(g_tabText, px(8), px(8), px(120), px(30), TRUE);
+    MoveWindow(g_tabImage, px(136), px(8), px(120), px(30), TRUE);
+
+    switch_tab(0);
+    layout_text(g_hwndMain);
+
+    if (demo)
+    {
+        const int dw = 400, dh = 300;
+        uint8_t *px = (uint8_t *)malloc((size_t)dw * dh * 4);
+        if (px)
+        {
+            for (int y = 0; y < dh; y++)
+                for (int x = 0; x < dw; x++)
+                {
+                    int i = (y * dw + x) * 4;
+                    px[i] = (uint8_t)(x * 255 / dw);
+                    px[i+1] = (uint8_t)(y * 255 / dh);
+                    px[i+2] = (uint8_t)((x + y) * 255 / (dw + dh));
+                    px[i+3] = 255;
+                }
+            free(i_pixels); free(i_orig);
+            i_pixels = px;
+            i_orig = (uint8_t *)malloc((size_t)dw * dh * 4);
+            if (i_orig) memcpy(i_orig, px, (size_t)dw * dh * 4);
+            i_w = dw; i_h = dh;
+            i_dirty = 0;
+            EnableWindow(i_enc, TRUE);
+            EnableWindow(i_dec, TRUE);
+            switch_tab(1);
+            layout_image(g_hwndMain);
+            set_status(L"演示图已加载（400 x 300）");
+            InvalidateRect(i_pic, NULL, TRUE);
+        }
+    }
+
+    ShowWindow(g_hwndMain, nShow);
+    UpdateWindow(g_hwndMain);
+
+    MSG msg;
+    while (GetMessageW(&msg, NULL, 0, 0))
+    {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    ExitProcess((UINT)msg.wParam);
+    return 0;
+}

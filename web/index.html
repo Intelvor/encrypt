@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文本 / 图片 加解密工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0c0e14;
+    --surface: rgba(255,255,255,0.03);
+    --surface-hover: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.08);
+    --border-focus: rgba(120,160,255,0.4);
+    --text: #e2e4ea;
+    --text-dim: #6b7080;
+    --text-muted: #3e4250;
+    --accent: #78a0ff;
+    --accent-glow: rgba(120,160,255,0.15);
+    --green: #4ade80;
+    --green-glow: rgba(74,222,128,0.12);
+    --amber: #fbbf24;
+    --amber-glow: rgba(251,191,36,0.12);
+    --red: #f87171;
+    --red-glow: rgba(248,113,113,0.12);
+    --purple: #a78bfa;
+    --purple-glow: rgba(167,139,250,0.12);
+    --radius: 12px;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --mono: ui-monospace, 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 24px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120,160,255,0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(74,222,128,0.05), transparent);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 960px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  }
+
+  /* ===== Tabs ===== */
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .tab:hover { background: var(--surface-hover); color: var(--text); }
+  .tab.active {
+    background: var(--accent-glow);
+    border-color: rgba(120,160,255,0.4);
+    color: var(--accent);
+  }
+  .tab .tab-sub {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+
+  .tool-panel { display: none; }
+  .tool-panel.active { display: block; }
+
+  /* ===== Header ===== */
+  .header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .header h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.3px; }
+  .badge {
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--accent-glow);
+    border: 1px solid rgba(120,160,255,0.3);
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  /* ===== Fields ===== */
+  .row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .field { display: flex; align-items: center; gap: 8px; }
+  .field label { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+  .field .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+    margin-right: 4px;
+  }
+
+  input[type="text"], input[type="number"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 13px;
+    outline: none;
+    font-family: var(--mono);
+  }
+  input[type="text"]:focus, input[type="number"]:focus { border-color: var(--border-focus); }
+  input[type="number"] { width: 70px; }
+
+  textarea {
+    width: 100%;
+    min-height: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 12px;
+    font-size: 13px;
+    font-family: var(--mono);
+    resize: vertical;
+    outline: none;
+    line-height: 1.6;
+  }
+  textarea:focus { border-color: var(--border-focus); }
+  textarea[readonly] { cursor: default; }
+
+  /* ===== Buttons ===== */
+  .btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+  .btn-group .btn { flex: 1; min-width: 90px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .btn:hover { background: var(--surface-hover); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-primary { background: var(--accent-glow); border-color: rgba(120,160,255,0.4); color: var(--accent); }
+  .btn-primary:hover { background: rgba(120,160,255,0.22); }
+
+  .btn-green { background: var(--green-glow); border-color: rgba(74,222,128,0.4); color: var(--green); }
+  .btn-green:hover { background: rgba(74,222,128,0.2); }
+
+  .btn-amber { background: var(--amber-glow); border-color: rgba(251,191,36,0.4); color: var(--amber); }
+  .btn-amber:hover { background: rgba(251,191,36,0.2); }
+
+  .btn-red { background: var(--red-glow); border-color: rgba(248,113,113,0.4); color: var(--red); }
+  .btn-red:hover { background: rgba(248,113,113,0.2); }
+
+  .btn-swap { background: var(--purple-glow); border-color: rgba(167,139,250,0.4); color: var(--purple); }
+  .btn-swap:hover { background: rgba(167,139,250,0.2); }
+
+  /* ===== Output section (text) ===== */
+  .output-section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .offset-badge {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    display: none;
+  }
+  .offset-badge.show { display: inline-block; }
+  .offset-badge strong { color: var(--accent); }
+
+  /* ===== Image tool ===== */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 12px;
+  }
+  .drop-zone:hover, .drop-zone.over {
+    border-color: var(--border-focus);
+    color: var(--text);
+    background: var(--accent-glow);
+  }
+  .info { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; font-family: var(--mono); }
+  .preview-wrap { margin-bottom: 12px; }
+  .canvas-box {
+    position: relative;
+    width: 100%;
+    max-height: 460px;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    overflow: hidden;
+  }
+  .placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 14px;
+    text-align: center;
+    line-height: 1.6;
+  }
+  canvas {
+    max-width: 100%;
+    max-height: 440px;
+    image-rendering: auto;
+  }
+  .placeholder { color: var(--text-dim); font-size: 14px; text-align: center; padding: 48px 20px; }
+
+  .status {
+    font-size: 13px;
+    color: var(--text-dim);
+    min-height: 20px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 12px;
+  }
+  .status.ok { color: var(--green); border-color: rgba(74,222,128,0.3); }
+  .status.err { color: var(--red); border-color: rgba(248,113,113,0.3); }
+
+  /* ===== Toast ===== */
+  .toast {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-12px);
+    background: rgba(30,32,42,0.95);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ===== 移动端适配 ===== */
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .container { padding: 14px; }
+    .header h1 { font-size: 15px; }
+    .tabs { gap: 4px; margin-bottom: 14px; padding-bottom: 12px; }
+    .tab { padding: 10px 6px; font-size: 13px; }
+    .tab .tab-sub { display: none; }  /* 小屏隐藏副标题 */
+    .row { gap: 8px; margin-bottom: 12px; }
+    .field label { font-size: 12px; }
+    .btn-group { gap: 8px; margin: 12px 0; }
+    .btn-group .btn { min-width: 0; padding: 10px 8px; font-size: 12px; }
+    textarea { min-height: 140px; font-size: 13px; }
+    input[type="text"], input[type="number"] { padding: 8px 8px; font-size: 12px; }
+    /* 覆盖内联 width:180px，让密钥框自适应 */
+    input#key, input#imgKey { width: 140px !important; max-width: 45vw; }
+    .drop-zone { padding: 20px; font-size: 12px; }
+    .canvas-box { max-height: 360px; min-height: 160px; }
+    canvas { max-height: 340px; }
+    .placeholder { padding: 24px 12px; }
+    .info { font-size: 11px; }
+    .status { font-size: 12px; }
+  }
+
+  @media (max-width: 400px) {
+    body { padding: 8px; }
+    .container { padding: 10px; }
+    .tab { font-size: 12px; }
+    .btn-group .btn { flex: 1 1 40%; }  /* 按钮两列排布 */
+    .btn-group { gap: 6px; }
+    input[type="text"] { max-width: 100%; }
+    .field { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- ===== Tab 导航 ===== -->
+  <div class="tabs">
+    <div class="tab active" data-tool="text">
+      文本加解密
+      <span class="tab-sub">密钥 → 伪随机偏移 → 逐字符移位</span>
+    </div>
+    <div class="tab" data-tool="image">
+      图片加解密
+      <span class="tab-sub">密钥 + 轮次 · 像素乱序 + 字节替换</span>
+    </div>
+  </div>
+
+  <!-- ===== 文本工具 ===== -->
+  <div class="tool-panel active" id="panel-text">
+    <div class="header">
+      <h1>文本加解密</h1>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1">
+        <label><span class="dot"></span>密钥</label>
+        <input type="text" id="key" value="mimo" placeholder="输入任意字符串作为密钥" style="width:180px">
+        <div class="offset-badge" id="offsetBadge">seed <strong id="offsetVal"></strong></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label><span class="dot"></span>轮次</label>
+        <input type="number" id="rounds" value="1" min="1" max="99">
+      </div>
+    </div>
+    <div class="field" style="align-items:flex-start">
+      <label style="margin-top:10px"><span class="dot"></span>输入文本</label>
+      <textarea id="input" placeholder="在此输入要加密或解密的文本..."></textarea>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="TextApp.doEncrypt()">加密</button>
+      <button class="btn btn-green" onclick="TextApp.doDecrypt()">解密</button>
+    </div>
+    <div class="output-section">
+      <div class="field" style="align-items:flex-start">
+        <label style="margin-top:10px"><span class="dot"></span>输出结果</label>
+        <textarea id="output" readonly placeholder="结果显示在这里..."></textarea>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-amber" onclick="TextApp.copyResult()">复制结果</button>
+        <button class="btn btn-swap" onclick="TextApp.swapToInput()">回填输入</button>
+        <button class="btn btn-red" onclick="TextApp.clearAll()">清空</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 图片工具 ===== -->
+  <div class="tool-panel" id="panel-image">
+    <div class="header">
+      <h1>图片加解密</h1>
+    </div>
+    <div class="drop-zone" id="dropZone">点击或拖拽图片到此处（支持 PNG / JPG / BMP）</div>
+    <input type="file" id="fileInput" accept="image/*" style="display:none">
+    <div class="row">
+      <div class="field">
+        <label>密钥</label>
+        <input type="text" id="imgKey" value="mimo" style="width:180px">
+      </div>
+      <div class="field">
+        <label>轮次</label>
+        <input type="number" id="imgRounds" value="1" min="1" max="99">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="btnEncrypt" disabled>加密图片</button>
+      <button class="btn btn-amber" id="btnDecrypt" disabled>解密图片</button>
+      <button class="btn btn-green" id="btnSave" disabled>保存 PNG</button>
+      <button class="btn" id="btnReset">清空</button>
+    </div>
+    <div class="info" id="imgInfo">未加载图片</div>
+    <div class="preview-wrap">
+      <div class="canvas-box">
+        <canvas id="canvas"></canvas>
+        <div class="placeholder" id="placeholder">请选择一张图片</div>
+      </div>
+    </div>
+    <div class="status" id="status">就绪</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ================= Tab 切换 =================
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tool).classList.add('active');
+  });
+});
+
+// ================= Toast（共用） =================
+let toastTimer = null;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+// ================= 文本加解密（IIFE 隔离，避免与图片算法冲突） =================
+const TextApp = (function() {
+  const MOD = 0x110000;
+
+  function isControl(code) {
+    return (code <= 0x1F) || (code >= 0x7F && code <= 0x9F) ||
+           (code >= 0xD800 && code <= 0xDFFF);
+  }
+
+  let SAFE_TOTAL = 0;
+  for (let i = 0; i < MOD; i++) {
+    if (!isControl(i)) SAFE_TOTAL++;
+  }
+
+  const fwdMap = new Uint32Array(SAFE_TOTAL);
+  const revMap = new Int32Array(MOD);
+
+  (function buildMaps() {
+    let safeIdx = 0;
+    for (let code = 0; code < MOD; code++) {
+      if (!isControl(code)) {
+        fwdMap[safeIdx] = code;
+        revMap[code] = safeIdx;
+        safeIdx++;
+      } else {
+        revMap[code] = -1;
+      }
+    }
+  })();
+
+  function hashKey(key) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = (h * 0x01000193) | 0;
+    }
+    return h >>> 0;
+  }
+
+  function makeShift(key, pos) {
+    const seed = hashKey(key);
+    let x = (seed + pos * 0x9E3779B9) | 0;
+    x = (x ^ (x >>> 16)) * 0x45d9f3b | 0;
+    x = (x ^ (x >>> 16)) * 0x45d9f3b | 0;
+    x = x ^ (x >>> 16);
+    return (x >>> 0) % 256;
+  }
+
+  function safeShift(pos, delta) {
+    let p = (pos + delta) % SAFE_TOTAL;
+    if (p < 0) p += SAFE_TOTAL;
+    while (isControl(fwdMap[p])) p = (p + 1) % SAFE_TOTAL;
+    return p;
+  }
+
+  function encrypt(text, key) {
+    let result = '';
+    let cp = 0;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.codePointAt(i);
+      const safePos = revMap[code];
+      if (safePos === -1) {
+        result += String.fromCodePoint(code);
+      } else {
+        const shift = makeShift(key, cp);
+        const newPos = safeShift(safePos, shift);
+        result += String.fromCodePoint(fwdMap[newPos]);
+      }
+      if (code > 0xFFFF) i++;
+      cp++;
+    }
+    return result;
+  }
+
+  function decrypt(cipher, key) {
+    let result = '';
+    let cp = 0;
+    for (let i = 0; i < cipher.length; i++) {
+      const code = cipher.codePointAt(i);
+      const safePos = revMap[code];
+      if (safePos === -1) {
+        result += String.fromCodePoint(code);
+      } else {
+        const shift = makeShift(key, cp);
+        const newPos = safeShift(safePos, -shift);
+        result += String.fromCodePoint(fwdMap[newPos]);
+      }
+      if (code > 0xFFFF) i++;
+      cp++;
+    }
+    return result;
+  }
+
+  function getKeyString() {
+    const k = document.getElementById('key').value;
+    if (!k) throw new Error('请输入密钥字符串');
+    return k;
+  }
+
+  function doEncrypt() {
+    try {
+      let text = document.getElementById('input').value;
+      const key = getKeyString();
+      const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
+      if (!text) { showToast('请输入要加密的文本'); return; }
+      for (let r = 0; r < rounds; r++) text = encrypt(text, key);
+      document.getElementById('output').value = text;
+      showToast(`加密完成（${rounds} 轮）`);
+    } catch (e) { alert(e.message); }
+  }
+
+  function doDecrypt() {
+    try {
+      let text = document.getElementById('input').value;
+      const key = getKeyString();
+      const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
+      if (!text) { showToast('请输入要解密的密文'); return; }
+      for (let r = 0; r < rounds; r++) text = decrypt(text, key);
+      document.getElementById('output').value = text;
+      showToast(`解密完成（${rounds} 轮）`);
+    } catch (e) { alert(e.message); }
+  }
+
+  function copyResult() {
+    const output = document.getElementById('output');
+    const text = output.value;
+    if (!text) { showToast('没有可复制的内容'); return; }
+    const done = () => { output.select(); showToast('已复制到剪贴板'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast('已复制到剪贴板');
+    } catch (e) {
+      showToast('复制失败，请手动选择文本复制');
+    }
+    document.body.removeChild(ta);
+  }
+
+  function clearAll() {
+    document.getElementById('input').value = '';
+    document.getElementById('output').value = '';
+    document.getElementById('input').focus();
+    showToast('已清空');
+  }
+
+  function swapToInput() {
+    const output = document.getElementById('output');
+    if (!output.value) { showToast('没有可回填的内容'); return; }
+    document.getElementById('input').value = output.value;
+    output.value = '';
+    document.getElementById('input').focus();
+    showToast('已回填到输入框');
+  }
+
+  // Real-time offset badge
+  document.getElementById('key').addEventListener('input', function() {
+    const badge = document.getElementById('offsetBadge');
+    const val = document.getElementById('offsetVal');
+    const k = this.value;
+    if (!k) { badge.classList.remove('show'); return; }
+    val.textContent = '0x' + hashKey(k).toString(16).toUpperCase().padStart(8, '0');
+    badge.classList.add('show');
+  });
+  (function() {
+    const k = document.getElementById('key').value;
+    if (k) {
+      document.getElementById('offsetVal').textContent = '0x' + hashKey(k).toString(16).toUpperCase().padStart(8, '0');
+      document.getElementById('offsetBadge').classList.add('show');
+    }
+  })();
+
+  return { doEncrypt, doDecrypt, copyResult, swapToInput, clearAll };
+})();
+
+// ================= 图片加解密（IIFE 隔离） =================
+const ImageApp = (function() {
+  const B = 0x9E3779B9;
+
+  function hashKey(key) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = (h * 0x01000193) | 0; }
+    return h >>> 0;
+  }
+
+  function makeRng(seed) {
+    let s = seed >>> 0;
+    return function () {
+      s ^= s << 13; s >>>= 0;
+      s ^= s >>> 17;
+      s ^= s << 5; s >>>= 0;
+      return s >>> 0;
+    };
+  }
+
+  function roundTransform(px, perm, npx, rng, enc) {
+    const nbyte = npx * 4;
+    for (let i = 0; i < npx; i++) perm[i] = i;
+    for (let i = npx - 1; i > 0; i--) {
+      const j = rng() % (i + 1);
+      const t = perm[i]; perm[i] = perm[j]; perm[j] = t;
+    }
+    const xv = new Uint8Array(nbyte);
+    for (let i = 0; i < nbyte; i++) xv[i] = rng() & 0xFF;
+
+    if (enc) {
+      for (let i = 0; i < nbyte; i += 4) {
+        px[i] ^= xv[i];
+        px[i+1] ^= xv[i+1];
+        px[i+2] ^= xv[i+2];
+      }
+      const out = new Uint8ClampedArray(nbyte);
+      for (let i = 0; i < npx; i++) {
+        const d = perm[i] * 4, s = i * 4;
+        out[d]=px[s];out[d+1]=px[s+1];out[d+2]=px[s+2];out[d+3]=px[s+3];
+      }
+      px.set(out);
+    } else {
+      const out = new Uint8ClampedArray(nbyte);
+      for (let i = 0; i < npx; i++) {
+        const s = perm[i] * 4, d = i * 4;
+        out[d]=px[s];out[d+1]=px[s+1];out[d+2]=px[s+2];out[d+3]=px[s+3];
+      }
+      px.set(out);
+      for (let i = 0; i < nbyte; i += 4) {
+        px[i] ^= xv[i];
+        px[i+1] ^= xv[i+1];
+        px[i+2] ^= xv[i+2];
+      }
+    }
+  }
+
+  function encryptImage(px, key, rounds, w, h) {
+    const npx = w * h;
+    const perm = new Uint32Array(npx);
+    const seedBase = hashKey(key);
+    for (let r = 0; r < rounds; r++) {
+      const seed = (seedBase ^ Math.imul(r + 1, B)) >>> 0;
+      roundTransform(px, perm, npx, makeRng(seed), true);
+    }
+  }
+
+  function decryptImage(px, key, rounds, w, h) {
+    const npx = w * h;
+    const perm = new Uint32Array(npx);
+    const seedBase = hashKey(key);
+    for (let r = rounds - 1; r >= 0; r--) {
+      const seed = (seedBase ^ Math.imul(r + 1, B)) >>> 0;
+      roundTransform(px, perm, npx, makeRng(seed), false);
+    }
+  }
+
+  // ===== UI =====
+  const fileInput = document.getElementById('fileInput');
+  const dropZone = document.getElementById('dropZone');
+  const canvas = document.getElementById('canvas');
+  const placeholder = document.getElementById('placeholder');
+  const imgInfo = document.getElementById('imgInfo');
+  const status = document.getElementById('status');
+  const btnEncrypt = document.getElementById('btnEncrypt');
+  const btnDecrypt = document.getElementById('btnDecrypt');
+  const btnSave = document.getElementById('btnSave');
+  const btnReset = document.getElementById('btnReset');
+  const ctx = canvas.getContext('2d');
+
+  let currentW = 0, currentH = 0;
+  let hasImage = false;
+
+  function setStatus(msg, type) {
+    status.textContent = msg;
+    status.className = 'status' + (type ? ' ' + type : '');
+  }
+
+  function loadImage(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        currentW = img.naturalWidth;
+        currentH = img.naturalHeight;
+        canvas.width = currentW;
+        canvas.height = currentH;
+        ctx.clearRect(0, 0, currentW, currentH);
+        ctx.drawImage(img, 0, 0, currentW, currentH);
+        hasImage = true;
+        placeholder.style.display = 'none';
+        canvas.style.display = 'block';
+        imgInfo.textContent = `尺寸: ${currentW} × ${currentH} 像素 · ${currentW * currentH * 4} 字节`;
+        btnEncrypt.disabled = false;
+        btnDecrypt.disabled = false;
+        setStatus('图片已加载', 'ok');
+      };
+      img.onerror = () => { setStatus('图片加载失败', 'err'); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) loadImage(f);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) loadImage(fileInput.files[0]);
+  });
+
+  function getKey() {
+    const k = document.getElementById('imgKey').value;
+    if (!k) { setStatus('请输入密钥', 'err'); return null; }
+    return k;
+  }
+  function getRounds() {
+    return Math.max(1, parseInt(document.getElementById('imgRounds').value, 10) || 1);
+  }
+
+  function transform(enc) {
+    if (!hasImage) { setStatus('请先加载图片', 'err'); return; }
+    const key = getKey();
+    if (!key) return;
+    const rounds = getRounds();
+    const imgData = ctx.getImageData(0, 0, currentW, currentH);
+    const px = imgData.data;
+    setStatus(enc ? `加密中（${rounds} 轮）...` : `解密中（${rounds} 轮）...`);
+    setTimeout(() => {
+      try {
+        if (enc) encryptImage(px, key, rounds, currentW, currentH);
+        else decryptImage(px, key, rounds, currentW, currentH);
+        ctx.putImageData(imgData, 0, 0);
+        btnSave.disabled = false;
+        setStatus(enc ? `加密完成（${rounds} 轮）` : `解密完成（${rounds} 轮）`, 'ok');
+      } catch (e) {
+        setStatus('处理失败: ' + e.message, 'err');
+      }
+    }, 30);
+  }
+
+  btnEncrypt.addEventListener('click', () => transform(true));
+  btnDecrypt.addEventListener('click', () => transform(false));
+
+  btnSave.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'image_' + Date.now() + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    setStatus('已保存为 PNG', 'ok');
+  });
+
+  btnReset.addEventListener('click', () => {
+    hasImage = false;
+    currentW = currentH = 0;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.style.display = 'none';
+    placeholder.style.display = 'block';
+    imgInfo.textContent = '未加载图片';
+    btnEncrypt.disabled = true;
+    btnDecrypt.disabled = true;
+    btnSave.disabled = true;
+    setStatus('已清空');
+    fileInput.value = '';
+  });
+
+  return {};
+})();
+</script>
+</body>
+</html>
