@@ -13,12 +13,10 @@
 ```
 encrypt/
 ├── build/                 # 统一构建产物目录（gitignore）
-│   ├── encrypt-x86.exe    # C 桌面版 32 位
-│   ├── encrypt-x64.exe    # C 桌面版 64 位
+│   ├── encrypt.exe        # C 桌面版
 │   └── encrypt.apk        # Android 版
 ├── web/                   # 网页版（浏览器打开即用）
-│   ├── index.html         # 文本 + 图片
-│   └── legacy/            # 旧版单工具
+│   └── index.html         # 文本 + 图片
 ├── desktop/
 │   └── c/                 # 桌面版（C, Win32 GUI）
 │       └── all/           # 文本 + 图片
@@ -40,7 +38,7 @@ encrypt/
 
 ```bat
 cd desktop\c\all
-build-all.bat          :: 输出 build\encrypt-x86.exe（32位）和 build\encrypt-x64.exe（64位）
+build-all.bat          :: 输出 build\encrypt.exe
 ```
 
 ### Android 版

@@ -747,9 +747,12 @@ const TextApp = (function() {
       const key = getKeyString();
       const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
       if (!text) { showToast(t('msgEnterTextEnc')); return; }
+      const t0 = performance.now();
       for (let r = 0; r < rounds; r++) text = encrypt(text, key);
+      const dt = performance.now() - t0;
       document.getElementById('output').value = text;
-      showToast(t('msgEncDone', {n: rounds}));
+      const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
+      showToast(t('msgEncDone', {n: rounds}) + ' | ' + timeStr);
     } catch (e) { alert(e.message); }
   }
 
@@ -759,9 +762,12 @@ const TextApp = (function() {
       const key = getKeyString();
       const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
       if (!text) { showToast(t('msgEnterTextDec')); return; }
+      const t0 = performance.now();
       for (let r = 0; r < rounds; r++) text = decrypt(text, key);
+      const dt = performance.now() - t0;
       document.getElementById('output').value = text;
-      showToast(t('msgDecDone', {n: rounds}));
+      const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
+      showToast(t('msgDecDone', {n: rounds}) + ' | ' + timeStr);
     } catch (e) { alert(e.message); }
   }
 
@@ -921,6 +927,7 @@ var ImageApp = (function() {
   }
 
   function loadImage(file) {
+    const t0 = performance.now();
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
@@ -934,10 +941,12 @@ var ImageApp = (function() {
         hasImage = true;
         placeholder.style.display = 'none';
         canvas.style.display = 'block';
+        const dt = performance.now() - t0;
+        const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
         imgInfo.textContent = t('msgImgInfo', {w: currentW, h: currentH, bytes: currentW * currentH * 4});
         btnEncrypt.disabled = false;
         btnDecrypt.disabled = false;
-        setStatus(t('msgImgLoaded'), 'ok');
+        setStatus(t('msgImgLoaded') + ' | ' + timeStr, 'ok');
       };
       img.onerror = () => { setStatus(t('msgImgLoadFail'), 'err'); };
       img.src = reader.result;
@@ -982,11 +991,14 @@ var ImageApp = (function() {
     setStatus(enc ? t('msgEncrypting', {n: rounds}) : t('msgDecrypting', {n: rounds}));
     setTimeout(() => {
       try {
+        const t0 = performance.now();
         if (enc) encryptImage(px, key, rounds, currentW, currentH);
         else decryptImage(px, key, rounds, currentW, currentH);
+        const dt = performance.now() - t0;
         ctx.putImageData(imgData, 0, 0);
         btnSave.disabled = false;
-        setStatus(enc ? t('msgEncDone', {n: rounds}) : t('msgDecDone', {n: rounds}), 'ok');
+        const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
+        setStatus((enc ? t('msgEncDone', {n: rounds}) : t('msgDecDone', {n: rounds})) + ' | ' + timeStr, 'ok');
       } catch (e) {
         setStatus(t('msgProcessFail') + e.message, 'err');
       }
