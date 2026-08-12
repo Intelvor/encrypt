@@ -850,70 +850,64 @@ const ImageApp = (function() {
     return h >>> 0;
   }
 
-  function makeRng(seed) {
-    let s = seed >>> 0;
-    return function () {
-      s ^= s << 13; s >>>= 0;
-      s ^= s >>> 17;
-      s ^= s << 5; s >>>= 0;
-      return s >>> 0;
-    };
+  function rngNext(st) {
+    let s = st.s;
+    s ^= s << 13; s >>>= 0;
+    s ^= s >>> 17;
+    s ^= s << 5; s >>>= 0;
+    st.s = s;
+    return s >>> 0;
   }
 
-  function roundTransform(px, perm, npx, rng, enc) {
-    const nbyte = npx * 4;
+  function roundTransform(px32, perm, npx, xv, out32, st, enc) {
     for (let i = 0; i < npx; i++) perm[i] = i;
     for (let i = npx - 1; i > 0; i--) {
-      const j = rng() % (i + 1);
+      const j = rngNext(st) % (i + 1);
       const t = perm[i]; perm[i] = perm[j]; perm[j] = t;
     }
-    const xv = new Uint8Array(nbyte);
-    for (let i = 0; i < nbyte; i++) xv[i] = rng() & 0xFF;
+    const nbyte = npx * 4;
+    for (let i = 0; i < nbyte; i++) xv[i] = rngNext(st) & 0xFF;
 
     if (enc) {
-      for (let i = 0; i < nbyte; i += 4) {
-        px[i] ^= xv[i];
-        px[i+1] ^= xv[i+1];
-        px[i+2] ^= xv[i+2];
-      }
-      const out = new Uint8ClampedArray(nbyte);
       for (let i = 0; i < npx; i++) {
-        const d = perm[i] * 4, s = i * 4;
-        out[d]=px[s];out[d+1]=px[s+1];out[d+2]=px[s+2];out[d+3]=px[s+3];
+        const v = px32[i], k = (xv[i*4] | xv[i*4+1]<<8 | xv[i*4+2]<<16 | xv[i*4+3]<<24) >>> 0;
+        out32[perm[i]] = (((v ^ k) & 0x00FFFFFF) | (v & 0xFF000000)) >>> 0;
       }
-      px.set(out);
     } else {
-      const out = new Uint8ClampedArray(nbyte);
+      for (let i = 0; i < npx; i++) out32[i] = px32[perm[i]];
       for (let i = 0; i < npx; i++) {
-        const s = perm[i] * 4, d = i * 4;
-        out[d]=px[s];out[d+1]=px[s+1];out[d+2]=px[s+2];out[d+3]=px[s+3];
-      }
-      px.set(out);
-      for (let i = 0; i < nbyte; i += 4) {
-        px[i] ^= xv[i];
-        px[i+1] ^= xv[i+1];
-        px[i+2] ^= xv[i+2];
+        const v = out32[i], k = (xv[i*4] | xv[i*4+1]<<8 | xv[i*4+2]<<16 | xv[i*4+3]<<24) >>> 0;
+        out32[i] = (((v ^ k) & 0x00FFFFFF) | (v & 0xFF000000)) >>> 0;
       }
     }
+    px32.set(out32);
   }
 
   function encryptImage(px, key, rounds, w, h) {
-    const npx = w * h;
+    const npx = w * h, nbyte = npx * 4;
+    const px32 = new Uint32Array(px.buffer, px.byteOffset, npx);
     const perm = new Uint32Array(npx);
+    const xv = new Uint8Array(nbyte);
+    const out32 = new Uint32Array(npx);
     const seedBase = hashKey(key);
+    const st = { s: 0 };
     for (let r = 0; r < rounds; r++) {
-      const seed = (seedBase ^ Math.imul(r + 1, B)) >>> 0;
-      roundTransform(px, perm, npx, makeRng(seed), true);
+      st.s = (seedBase ^ Math.imul(r + 1, B)) >>> 0;
+      roundTransform(px32, perm, npx, xv, out32, st, true);
     }
   }
 
   function decryptImage(px, key, rounds, w, h) {
-    const npx = w * h;
+    const npx = w * h, nbyte = npx * 4;
+    const px32 = new Uint32Array(px.buffer, px.byteOffset, npx);
     const perm = new Uint32Array(npx);
+    const xv = new Uint8Array(nbyte);
+    const out32 = new Uint32Array(npx);
     const seedBase = hashKey(key);
+    const st = { s: 0 };
     for (let r = rounds - 1; r >= 0; r--) {
-      const seed = (seedBase ^ Math.imul(r + 1, B)) >>> 0;
-      roundTransform(px, perm, npx, makeRng(seed), false);
+      st.s = (seedBase ^ Math.imul(r + 1, B)) >>> 0;
+      roundTransform(px32, perm, npx, xv, out32, st, false);
     }
   }
 
