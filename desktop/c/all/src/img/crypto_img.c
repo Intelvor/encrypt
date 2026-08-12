@@ -4,6 +4,7 @@
 #include <math.h>
 #include <wchar.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define A 0x6D2B79F5u
 #define B 0x9E3779B9u
@@ -46,7 +47,10 @@ static uint32_t rng_next(void)
 
 // 单轮：enc=1 加密，0 解密。就地修改 px。
 // 只变换 RGB，保持 alpha 不变（避免浏览器对半透明像素做预乘导致 RGB 漂移）
-static void round_transform(uint8_t *px, uint32_t *perm, int npx, uint32_t seed, int enc)
+// 性能优化：复用 caller 提供的缓冲区（xvbuf/outbuf），避免每轮 malloc/free；
+// 用 32 位整型一次读写一个像素（4 字节），并批量生成 XOR 字节。
+static void round_transform(uint8_t *px, uint32_t *perm, int npx,
+                            uint8_t *xv, uint8_t *out, uint32_t seed, int enc)
 {
     int nbyte = npx * 4;
     rng_state = seed;
@@ -58,57 +62,56 @@ static void round_transform(uint8_t *px, uint32_t *perm, int npx, uint32_t seed,
         uint32_t j = rng_next() % (uint32_t)(i + 1);
         uint32_t t = perm[i]; perm[i] = perm[j]; perm[j] = t;
     }
-    // 收集 XOR 字节（消耗 rng）
-    uint8_t *xv = (uint8_t *)malloc((size_t)nbyte);
-    if (!xv) return;
+    // 收集 XOR 字节（消耗 rng）：必须逐字节生成以保持与 JS 版互通
     for (int i = 0; i < nbyte; i++) xv[i] = (uint8_t)(rng_next() & 0xFF);
 
-    uint8_t *out = (uint8_t *)malloc((size_t)nbyte);
-    if (!out) { free(xv); return; }
+    uint32_t *px32 = (uint32_t *)px;
+    uint32_t *out32 = (uint32_t *)out;
+    uint32_t *xv32 = (uint32_t *)xv;
 
     if (enc)
     {
-        // 先 XOR（仅 RGB，跳过 alpha）
-        for (int i = 0; i < nbyte; i += 4)
+        // 先 XOR（仅 RGB，跳过 alpha）：按像素处理，alpha 位保持不变
+        for (int i = 0; i < npx; i++)
         {
-            px[i] ^= xv[i];
-            px[i+1] ^= xv[i+1];
-            px[i+2] ^= xv[i+2];
+            uint32_t v = px32[i];
+            uint32_t k = xv32[i];                 // k = RGBA 随机字节
+            uint32_t nc = v ^ k;                  // 异或整像素（含 alpha）
+            nc = (nc & 0x00FFFFFFu) | (v & 0xFF000000u); // 恢复 alpha 原值
+            px32[i] = nc;
         }
         // 再置换 out[perm[i]] = px[i]（整像素含 alpha）
         for (int i = 0; i < npx; i++)
-        {
-            int d = (int)perm[i] * 4, s = i * 4;
-            out[d]=px[s]; out[d+1]=px[s+1]; out[d+2]=px[s+2]; out[d+3]=px[s+3];
-        }
-        for (int i = 0; i < nbyte; i++) px[i] = out[i];
+            out32[perm[i]] = px32[i];
+        // 回写
+        memcpy(px32, out32, (size_t)nbyte);
     }
     else
     {
         // 先逆置换 out[i] = px[perm[i]]
         for (int i = 0; i < npx; i++)
-        {
-            int s = (int)perm[i] * 4, d = i * 4;
-            out[d]=px[s]; out[d+1]=px[s+1]; out[d+2]=px[s+2]; out[d+3]=px[s+3];
-        }
-        for (int i = 0; i < nbyte; i++) px[i] = out[i];
+            out32[i] = px32[perm[i]];
+        memcpy(px32, out32, (size_t)nbyte);
         // 再逆 XOR（仅 RGB）
-        for (int i = 0; i < nbyte; i += 4)
+        for (int i = 0; i < npx; i++)
         {
-            px[i] ^= xv[i];
-            px[i+1] ^= xv[i+1];
-            px[i+2] ^= xv[i+2];
+            uint32_t v = px32[i];
+            uint32_t k = xv32[i];
+            uint32_t nc = v ^ k;
+            nc = (nc & 0x00FFFFFFu) | (v & 0xFF000000u);
+            px32[i] = nc;
         }
     }
-    free(out);
-    free(xv);
 }
 
 static void img_transform(uint8_t *px, const wchar_t *key, int rounds, int w, int h, int enc)
 {
     int npx = w * h;
+    int nbyte = npx * 4;
     uint32_t *perm = (uint32_t *)malloc((size_t)npx * sizeof(uint32_t));
-    if (!perm) return;
+    uint8_t *xv = (uint8_t *)malloc((size_t)nbyte);
+    uint8_t *out = (uint8_t *)malloc((size_t)nbyte);
+    if (!perm || !xv || !out) { free(perm); free(xv); free(out); return; }
     uint32_t seed_base = hash_key(key);
 
     if (enc)
@@ -116,7 +119,7 @@ static void img_transform(uint8_t *px, const wchar_t *key, int rounds, int w, in
         for (int r = 0; r < rounds; r++)
         {
             uint32_t seed = (seed_base ^ ((uint32_t)(r + 1) * B));
-            round_transform(px, perm, npx, seed, 1);
+            round_transform(px, perm, npx, xv, out, seed, 1);
         }
     }
     else
@@ -124,10 +127,12 @@ static void img_transform(uint8_t *px, const wchar_t *key, int rounds, int w, in
         for (int r = rounds - 1; r >= 0; r--)
         {
             uint32_t seed = (seed_base ^ ((uint32_t)(r + 1) * B));
-            round_transform(px, perm, npx, seed, 0);
+            round_transform(px, perm, npx, xv, out, seed, 0);
         }
     }
     free(perm);
+    free(xv);
+    free(out);
 }
 
 void img_encrypt(uint8_t *px, const wchar_t *key, int rounds, int w, int h)
