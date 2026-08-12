@@ -587,7 +587,11 @@ static int i_load(const wchar_t *path)
 {
     int w, h;
     uint8_t *px = NULL;
+    LARGE_INTEGER freq, t0, t1;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&t0);
     int rc = image_decode_file(path, &w, &h, &px);
+    QueryPerformanceCounter(&t1);
     if (rc != 0) { set_status(S.imgNotValid); return 0; }
     free(i_pixels); free(i_orig);
     i_pixels = px;
@@ -596,8 +600,12 @@ static int i_load(const wchar_t *path)
     i_w = w; i_h = h;
     i_dirty = 0; i_show_orig = 0;
     SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
+    double ms = (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart * 1000.0;
     wchar_t info[160];
-    swprintf(info, 160, L"%d x %d (%d KB)", w, h, (int)((size_t)w * h * 4 / 1024));
+    if (ms < 1000.0)
+        swprintf(info, 160, L"%d x %d (%d KB) | %.0f ms", w, h, (int)((size_t)w * h * 4 / 1024), ms);
+    else
+        swprintf(info, 160, L"%d x %d (%d KB) | %.2f s", w, h, (int)((size_t)w * h * 4 / 1024), ms / 1000.0);
     set_status(info);
     InvalidateRect(i_pic, NULL, TRUE);
     i_update_zoom();
