@@ -1,5 +1,6 @@
 // crypto_img.c - 图片加解密算法（与 HTML 版逐位互通）
 // 设计：每轮 = 像素置换(Fisher-Yates) + 字节XOR；密钥哈希 + 轮次种子
+#pragma GCC optimize("O2")
 #include "crypto_img.h"
 #include <math.h>
 #include <wchar.h>
