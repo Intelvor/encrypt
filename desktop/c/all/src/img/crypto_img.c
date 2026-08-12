@@ -10,7 +10,6 @@
 #define A 0x6D2B79F5u
 #define B 0x9E3779B9u
 
-// 模拟 JS 的 ToInt32(double)：与文本版逐位一致（floor/ceil + fmod）
 static int32_t to_int32(double d)
 {
     if (isnan(d) || isinf(d)) return 0;
@@ -22,7 +21,6 @@ static int32_t to_int32(double d)
     return (int32_t)d;
 }
 
-// FNV-1a 32 位哈希，与 JS hashKey 逐位一致（乘法走 double，模拟 JS 舍入）
 static uint32_t hash_key(const wchar_t *key)
 {
     uint32_t h = 0x811c9dc5u;
@@ -34,7 +32,6 @@ static uint32_t hash_key(const wchar_t *key)
     return h;
 }
 
-// 确定性 PRNG（xorshift32，与 JS 逐位一致，纯移位+XOR 无乘法）
 static uint32_t rng_state;
 static uint32_t rng_next(void)
 {
@@ -50,6 +47,8 @@ static uint32_t rng_next(void)
 #define ENCRYPT_PARALLEL_THRESHOLD (256 * 256)
 #endif
 
+#define MAX_POOL_THREADS 32
+
 typedef struct {
     int start;
     int end;
@@ -60,9 +59,19 @@ typedef struct {
     int enc;
 } TransformWork;
 
-static DWORD WINAPI transform_thread_proc(LPVOID lpParam)
+typedef struct {
+    HANDLE thread;
+    HANDLE work_ready;
+    HANDLE work_done;
+    TransformWork work;
+    volatile int stop;
+} PoolThread;
+
+static PoolThread g_pool[MAX_POOL_THREADS];
+static int g_pool_size = 0;
+
+static void do_chunk(TransformWork *w)
 {
-    TransformWork *w = (TransformWork *)lpParam;
     if (w->enc)
     {
         for (int i = w->start; i < w->end; i++)
@@ -78,64 +87,90 @@ static DWORD WINAPI transform_thread_proc(LPVOID lpParam)
         for (int i = w->start; i < w->end; i++)
             w->out32[i] = w->px32[w->perm[i]];
     }
+}
+
+static DWORD WINAPI pool_thread_proc(LPVOID lpParam)
+{
+    PoolThread *pt = (PoolThread *)lpParam;
+    for (;;)
+    {
+        WaitForSingleObject(pt->work_ready, INFINITE);
+        if (pt->stop) break;
+        do_chunk(&pt->work);
+        SetEvent(pt->work_done);
+    }
     return 0;
 }
 
-static void run_threads(uint32_t *px32, uint32_t *perm, uint32_t *xv32,
-                        uint32_t *out32, int npx, int enc)
+static void shutdown_pool(void)
 {
+    for (int i = 0; i < g_pool_size; i++)
+    {
+        g_pool[i].stop = 1;
+        SetEvent(g_pool[i].work_ready);
+        WaitForSingleObject(g_pool[i].thread, INFINITE);
+        CloseHandle(g_pool[i].thread);
+        CloseHandle(g_pool[i].work_ready);
+        CloseHandle(g_pool[i].work_done);
+    }
+    g_pool_size = 0;
+}
+
+static void init_pool(void)
+{
+    if (g_pool_size) return;
     SYSTEM_INFO si;
     GetNativeSystemInfo(&si);
     int hw = (int)si.dwNumberOfProcessors;
     if (hw < 1) hw = 1;
-    if (hw > 64) hw = 64;
-
-    int threads = npx / (64 * 1024);
-    if (threads < 1) threads = 1;
-    if (threads > hw) threads = hw;
-
-    if (threads <= 1)
+    if (hw > MAX_POOL_THREADS) hw = MAX_POOL_THREADS;
+    g_pool_size = hw;
+    for (int i = 0; i < hw; i++)
     {
-        TransformWork only = { 0, npx, perm, xv32, px32, out32, enc };
-        transform_thread_proc(&only);
-        return;
+        g_pool[i].work_ready = CreateEventW(NULL, FALSE, FALSE, NULL);
+        g_pool[i].work_done = CreateEventW(NULL, FALSE, FALSE, NULL);
+        g_pool[i].stop = 0;
+        g_pool[i].thread = CreateThread(NULL, 0, pool_thread_proc, &g_pool[i], 0, NULL);
     }
+    atexit(shutdown_pool);
+}
 
-    HANDLE handles[64];
-    TransformWork works[64];
+static void parallel_apply(uint32_t *px32, uint32_t *perm, uint32_t *xv32,
+                           uint32_t *out32, int npx, int enc)
+{
+    int threads = g_pool_size;
+    if (threads > npx / 4096) threads = npx / 4096;
+    if (threads < 2) threads = 2;
+
     int base = npx / threads;
     int extra = npx % threads;
     int cur = 0;
-    for (int t = 0; t < threads; t++)
+    int dispatched = threads - 1;
+    for (int t = 0; t < dispatched; t++)
     {
         int count = base + (t < extra ? 1 : 0);
-        works[t] = (TransformWork){ cur, cur + count, perm, xv32, px32, out32, enc };
-        handles[t] = CreateThread(NULL, 0, transform_thread_proc, &works[t], 0, NULL);
+        g_pool[t].work = (TransformWork){ cur, cur + count, perm, xv32, px32, out32, enc };
+        SetEvent(g_pool[t].work_ready);
         cur += count;
     }
-    WaitForMultipleObjects((DWORD)threads, handles, TRUE, INFINITE);
-    for (int t = 0; t < threads; t++)
-        CloseHandle(handles[t]);
+    TransformWork main_work = { cur, npx, perm, xv32, px32, out32, enc };
+    do_chunk(&main_work);
+    for (int t = 0; t < dispatched; t++)
+        WaitForSingleObject(g_pool[t].work_done, INFINITE);
 }
 
-// 单轮：enc=1 加密，0 解密。就地修改 px。
-// 只变换 RGB，保持 alpha 不变（避免浏览器对半透明像素做预乘导致 RGB 漂移）
-// 性能优化：复用 caller 提供的缓冲区（xvbuf/outbuf），避免每轮 malloc/free；
-// 用 32 位整型一次读写一个像素（4 字节），并批量生成 XOR 字节。
 static void round_transform(uint8_t *px, uint32_t *perm, int npx,
                              uint8_t *xv, uint8_t *out, uint32_t seed, int enc)
 {
     int nbyte = npx * 4;
     rng_state = seed;
 
-    // 生成置换（消耗 rng）
     for (int i = 0; i < npx; i++) perm[i] = (uint32_t)i;
     for (int i = npx - 1; i > 0; i--)
     {
         uint32_t j = rng_next() % (uint32_t)(i + 1);
         uint32_t t = perm[i]; perm[i] = perm[j]; perm[j] = t;
     }
-    // 收集 XOR 字节（消耗 rng）：必须逐字节生成以保持与 JS 版互通
     for (int i = 0; i < nbyte; i++) xv[i] = (uint8_t)(rng_next() & 0xFF);
 
     uint32_t *px32 = (uint32_t *)px;
@@ -173,7 +208,7 @@ static void round_transform(uint8_t *px, uint32_t *perm, int npx,
         return;
     }
 
-    run_threads(px32, perm, xv32, out32, npx, enc);
+    parallel_apply(px32, perm, xv32, out32, npx, enc);
     memcpy(px32, out32, (size_t)nbyte);
     if (!enc)
     {
@@ -189,6 +224,8 @@ static void round_transform(uint8_t *px, uint32_t *perm, int npx,
 
 static void img_transform(uint8_t *px, const wchar_t *key, int rounds, int w, int h, int enc)
 {
+    init_pool();
+
     int npx = w * h;
     int nbyte = npx * 4;
     uint32_t *perm = (uint32_t *)malloc((size_t)npx * sizeof(uint32_t));
