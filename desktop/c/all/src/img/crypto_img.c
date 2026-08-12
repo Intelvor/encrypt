@@ -5,6 +5,7 @@
 #include <wchar.h>
 #include <stdlib.h>
 #include <string.h>
+#include <windows.h>
 
 #define A 0x6D2B79F5u
 #define B 0x9E3779B9u
@@ -45,12 +46,84 @@ static uint32_t rng_next(void)
     return x;
 }
 
+#ifndef ENCRYPT_PARALLEL_THRESHOLD
+#define ENCRYPT_PARALLEL_THRESHOLD (256 * 256)
+#endif
+
+typedef struct {
+    int start;
+    int end;
+    const uint32_t *perm;
+    const uint32_t *xv32;
+    uint32_t *px32;
+    uint32_t *out32;
+    int enc;
+} TransformWork;
+
+static DWORD WINAPI transform_thread_proc(LPVOID lpParam)
+{
+    TransformWork *w = (TransformWork *)lpParam;
+    if (w->enc)
+    {
+        for (int i = w->start; i < w->end; i++)
+        {
+            uint32_t v = w->px32[i];
+            uint32_t k = w->xv32[i];
+            uint32_t nc = (v ^ k) & 0x00FFFFFFu;
+            w->out32[w->perm[i]] = nc | (v & 0xFF000000u);
+        }
+    }
+    else
+    {
+        for (int i = w->start; i < w->end; i++)
+            w->out32[i] = w->px32[w->perm[i]];
+    }
+    return 0;
+}
+
+static void run_threads(uint32_t *px32, uint32_t *perm, uint32_t *xv32,
+                        uint32_t *out32, int npx, int enc)
+{
+    SYSTEM_INFO si;
+    GetNativeSystemInfo(&si);
+    int hw = (int)si.dwNumberOfProcessors;
+    if (hw < 1) hw = 1;
+    if (hw > 64) hw = 64;
+
+    int threads = npx / (64 * 1024);
+    if (threads < 1) threads = 1;
+    if (threads > hw) threads = hw;
+
+    if (threads <= 1)
+    {
+        TransformWork only = { 0, npx, perm, xv32, px32, out32, enc };
+        transform_thread_proc(&only);
+        return;
+    }
+
+    HANDLE handles[64];
+    TransformWork works[64];
+    int base = npx / threads;
+    int extra = npx % threads;
+    int cur = 0;
+    for (int t = 0; t < threads; t++)
+    {
+        int count = base + (t < extra ? 1 : 0);
+        works[t] = (TransformWork){ cur, cur + count, perm, xv32, px32, out32, enc };
+        handles[t] = CreateThread(NULL, 0, transform_thread_proc, &works[t], 0, NULL);
+        cur += count;
+    }
+    WaitForMultipleObjects((DWORD)threads, handles, TRUE, INFINITE);
+    for (int t = 0; t < threads; t++)
+        CloseHandle(handles[t]);
+}
+
 // 单轮：enc=1 加密，0 解密。就地修改 px。
 // 只变换 RGB，保持 alpha 不变（避免浏览器对半透明像素做预乘导致 RGB 漂移）
 // 性能优化：复用 caller 提供的缓冲区（xvbuf/outbuf），避免每轮 malloc/free；
 // 用 32 位整型一次读写一个像素（4 字节），并批量生成 XOR 字节。
 static void round_transform(uint8_t *px, uint32_t *perm, int npx,
-                            uint8_t *xv, uint8_t *out, uint32_t seed, int enc)
+                             uint8_t *xv, uint8_t *out, uint32_t seed, int enc)
 {
     int nbyte = npx * 4;
     rng_state = seed;
@@ -69,37 +142,47 @@ static void round_transform(uint8_t *px, uint32_t *perm, int npx,
     uint32_t *out32 = (uint32_t *)out;
     uint32_t *xv32 = (uint32_t *)xv;
 
-    if (enc)
+    if (npx < ENCRYPT_PARALLEL_THRESHOLD)
     {
-        // 先 XOR（仅 RGB，跳过 alpha）：按像素处理，alpha 位保持不变
-        for (int i = 0; i < npx; i++)
+        if (enc)
         {
-            uint32_t v = px32[i];
-            uint32_t k = xv32[i];                 // k = RGBA 随机字节
-            uint32_t nc = v ^ k;                  // 异或整像素（含 alpha）
-            nc = (nc & 0x00FFFFFFu) | (v & 0xFF000000u); // 恢复 alpha 原值
-            px32[i] = nc;
+            for (int i = 0; i < npx; i++)
+            {
+                uint32_t v = px32[i];
+                uint32_t k = xv32[i];
+                uint32_t nc = (v ^ k) & 0x00FFFFFFu;
+                out32[perm[i]] = nc | (v & 0xFF000000u);
+            }
         }
-        // 再置换 out[perm[i]] = px[i]（整像素含 alpha）
-        for (int i = 0; i < npx; i++)
-            out32[perm[i]] = px32[i];
-        // 回写
+        else
+        {
+            for (int i = 0; i < npx; i++)
+                out32[i] = px32[perm[i]];
+        }
         memcpy(px32, out32, (size_t)nbyte);
+        if (!enc)
+        {
+            for (int i = 0; i < npx; i++)
+            {
+                uint32_t v = px32[i];
+                uint32_t k = xv32[i];
+                uint32_t nc = (v ^ k) & 0x00FFFFFFu;
+                px32[i] = nc | (v & 0xFF000000u);
+            }
+        }
+        return;
     }
-    else
+
+    run_threads(px32, perm, xv32, out32, npx, enc);
+    memcpy(px32, out32, (size_t)nbyte);
+    if (!enc)
     {
-        // 先逆置换 out[i] = px[perm[i]]
-        for (int i = 0; i < npx; i++)
-            out32[i] = px32[perm[i]];
-        memcpy(px32, out32, (size_t)nbyte);
-        // 再逆 XOR（仅 RGB）
         for (int i = 0; i < npx; i++)
         {
             uint32_t v = px32[i];
             uint32_t k = xv32[i];
-            uint32_t nc = v ^ k;
-            nc = (nc & 0x00FFFFFFu) | (v & 0xFF000000u);
-            px32[i] = nc;
+            uint32_t nc = (v ^ k) & 0x00FFFFFFu;
+            px32[i] = nc | (v & 0xFF000000u);
         }
     }
 }
