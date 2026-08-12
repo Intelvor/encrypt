@@ -376,10 +376,20 @@ static void t_transform(int encrypt)
     if (!text || !text[0]) { set_status(S.enterText); free(key); free(text); return; }
     int rounds = (int)SendMessageW(t_roundud, UDM_GETPOS, 0, 0);
     if (rounds < 1) rounds = 1;
+    LARGE_INTEGER freq, t0, t1;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&t0);
     wchar_t *result = encrypt ? crypto_encrypt(text, key, rounds) : crypto_decrypt(text, key, rounds);
+    QueryPerformanceCounter(&t1);
     wchar_t *win_text = to_win_lf(result);
     set_text(t_output, win_text);
-    set_status(encrypt ? S.encDone : S.decDone);
+    double ms = (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart * 1000.0;
+    wchar_t info[160];
+    if (ms < 1000.0)
+        swprintf(info, 160, L"%s (%d %s) | %.0f ms", encrypt ? S.encDone : S.decDone, rounds, S.rounds, ms);
+    else
+        swprintf(info, 160, L"%s (%d %s) | %.2f s", encrypt ? S.encDone : S.decDone, rounds, S.rounds, ms / 1000.0);
+    set_status(info);
     free(key); free(text); free(result); free(win_text);
 }
 
@@ -624,10 +634,18 @@ static void i_transform(int enc)
     wchar_t *key = get_text(i_key);
     if (!key || !key[0]) { set_status(S.imgEnterKey); free(key); return; }
     int rounds = i_rounds();
+    LARGE_INTEGER freq, t0, t1;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&t0);
     if (enc) img_encrypt(i_pixels, key, rounds, i_w, i_h);
     else img_decrypt(i_pixels, key, rounds, i_w, i_h);
+    QueryPerformanceCounter(&t1);
+    double ms = (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart * 1000.0;
     wchar_t info[160];
-    swprintf(info, 160, L"%s (%d) | %d x %d", enc ? S.encDone : S.decDone, rounds, i_w, i_h);
+    if (ms < 1000.0)
+        swprintf(info, 160, L"%s (%d) | %d x %d | %.0f ms", enc ? S.encDone : S.decDone, rounds, i_w, i_h, ms);
+    else
+        swprintf(info, 160, L"%s (%d) | %d x %d | %.2f s", enc ? S.encDone : S.decDone, rounds, i_w, i_h, ms / 1000.0);
     set_status(info);
     i_dirty = 1; i_show_orig = 0;
     SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
