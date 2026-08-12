@@ -9,18 +9,8 @@
 *.a
 *.dll
 
-# ===== C 构建 =====
-desktop/c/**/build/
-desktop/c/**/*.o
-desktop/c/*/encrypt*.exe
-desktop/c/*/all*.exe
-desktop/c/*/img-encrypt.exe
-desktop/c/*/selftest.exe
-
-# ===== .NET =====
-bin/
-obj/
-*.user
+# ===== 统一构建产物目录 =====
+build/
 
 # ===== Android SDK / 构建 =====
 android/sdk/

@@ -12,24 +12,27 @@
 
 ```
 encrypt/
-├── web/                # 网页版（浏览器打开即用）
-│   ├── index.html      # 合并版（文本 + 图片）
-│   └── legacy/         # 旧版单工具
+├── build/                 # 统一构建产物目录（gitignore）
+│   ├── encrypt-x86.exe    # C 桌面版 32 位
+│   ├── encrypt-x64.exe    # C 桌面版 64 位
+│   └── encrypt.apk        # Android 版
+├── web/                   # 网页版（浏览器打开即用）
+│   ├── index.html         # 文本 + 图片
+│   └── legacy/            # 旧版单工具
 ├── desktop/
-│   └── c/              # 桌面版（C, Win32 GUI）
-│       ├── all/        # 合并版（推荐）：文本 + 图片
-│       ├── text/       # 仅文本版
-│       └── image/      # 仅图片版
-├── android/            # Android 版（WebView 壳）
-│   ├── app/            # 应用源码（Java + assets + res）
-│   ├── build/          # 构建产物（gitignore）
-│   ├── sdk/            # Android SDK（gitignore）
+│   └── c/                 # 桌面版（C, Win32 GUI）
+│       └── all/           # 文本 + 图片
+├── android/               # Android 版（WebView 壳）
+│   ├── app/               # 应用源码（Java + assets + res）
+│   ├── sdk/               # Android SDK（gitignore）
 │   └── build-android.bat
-├── docs/               # 文档
-└── scripts/            # 构建脚本
+├── docs/                  # 文档
+└── scripts/               # 构建脚本
 ```
 
 ## 构建
+
+所有构建产物统一输出到根目录 `build/`。
 
 ### 桌面版（C）
 
@@ -37,9 +40,7 @@ encrypt/
 
 ```bat
 cd desktop\c\all
-build-all.bat          :: 合并版（文本+图片），输出 encrypt.exe
-cd ..\text && build32.bat    :: 仅文本版
-cd ..\image && build-image.bat  :: 仅图片版
+build-all.bat          :: 输出 build\encrypt-x86.exe（32位）和 build\encrypt-x64.exe（64位）
 ```
 
 ### Android 版
@@ -48,7 +49,7 @@ cd ..\image && build-image.bat  :: 仅图片版
 
 ```bat
 cd android
-build-android.bat      :: 输出 build/encrypt.apk
+build-android.bat      :: 输出 build\encrypt.apk
 ```
 
 ## 算法

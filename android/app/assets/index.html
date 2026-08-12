@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>文本 / 图片 加解密工具</title>
+<title data-i18n="pageTitle">文本 / 图片 加解密工具</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -102,6 +102,29 @@
     color: var(--text-dim);
     margin-top: 3px;
   }
+
+  .lang-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+  }
+  .lang-bar select {
+    background: #1a1d28;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: var(--font);
+    outline: none;
+    cursor: pointer;
+    appearance: auto;
+  }
+  .lang-bar select option {
+    background: #1a1d28;
+    color: var(--text);
+  }
+  .lang-bar select:focus { border-color: var(--border-focus); }
 
   .tool-panel { display: none; }
   .tool-panel.active { display: block; }
@@ -311,53 +334,61 @@
 <body>
 
 <div class="container">
+  <div class="lang-bar">
+    <select id="langSelect">
+      <option value="zh-CN">简体中文</option>
+      <option value="zh-TW">繁體中文</option>
+      <option value="en">English</option>
+    </select>
+  </div>
+
   <!-- ===== Tab 导航 ===== -->
   <div class="tabs">
     <div class="tab active" data-tool="text">
-      文本加解密
-      <span class="tab-sub">密钥 → 伪随机偏移 → 逐字符移位</span>
+      <span data-i18n="tabText">文本加解密</span>
+      <span class="tab-sub" data-i18n="tabTextSub">密钥 → 伪随机偏移 → 逐字符移位</span>
     </div>
     <div class="tab" data-tool="image">
-      图片加解密
-      <span class="tab-sub">密钥 + 轮次 · 像素乱序 + 字节替换</span>
+      <span data-i18n="tabImage">图片加解密</span>
+      <span class="tab-sub" data-i18n="tabImageSub">密钥 + 轮次 · 像素乱序 + 字节替换</span>
     </div>
   </div>
 
   <!-- ===== 文本工具 ===== -->
   <div class="tool-panel active" id="panel-text">
     <div class="header">
-      <h1>文本加解密</h1>
+      <h1 data-i18n="textTitle">文本加解密</h1>
     </div>
     <div class="row">
       <div class="field" style="flex:1">
-        <label><span class="dot"></span>密钥</label>
-        <input type="text" id="key" value="mimo" placeholder="输入任意字符串作为密钥" style="width:180px">
+        <label><span class="dot"></span><span data-i18n="key">密钥</span></label>
+        <input type="text" id="key" value="mimo" data-i18n-placeholder="keyPh" placeholder="输入任意字符串作为密钥" style="width:180px">
         <div class="offset-badge" id="offsetBadge">seed <strong id="offsetVal"></strong></div>
       </div>
     </div>
     <div class="row">
       <div class="field">
-        <label><span class="dot"></span>轮次</label>
+        <label><span class="dot"></span><span data-i18n="rounds">轮次</span></label>
         <input type="number" id="rounds" value="1" min="1" max="99">
       </div>
     </div>
     <div class="field" style="align-items:flex-start">
-      <label style="margin-top:10px"><span class="dot"></span>输入文本</label>
-      <textarea id="input" placeholder="在此输入要加密或解密的文本..."></textarea>
+      <label style="margin-top:10px"><span class="dot"></span><span data-i18n="inputText">输入文本</span></label>
+      <textarea id="input" data-i18n-placeholder="inputPh" placeholder="在此输入要加密或解密的文本..."></textarea>
     </div>
     <div class="btn-group">
-      <button class="btn btn-primary" onclick="TextApp.doEncrypt()">加密</button>
-      <button class="btn btn-green" onclick="TextApp.doDecrypt()">解密</button>
+      <button class="btn btn-primary" onclick="TextApp.doEncrypt()" data-i18n="encrypt">加密</button>
+      <button class="btn btn-green" onclick="TextApp.doDecrypt()" data-i18n="decrypt">解密</button>
     </div>
     <div class="output-section">
       <div class="field" style="align-items:flex-start">
-        <label style="margin-top:10px"><span class="dot"></span>输出结果</label>
-        <textarea id="output" readonly placeholder="结果显示在这里..."></textarea>
+        <label style="margin-top:10px"><span class="dot"></span><span data-i18n="outputResult">输出结果</span></label>
+        <textarea id="output" readonly data-i18n-placeholder="outputPh" placeholder="结果显示在这里..."></textarea>
       </div>
       <div class="btn-group">
-        <button class="btn btn-amber" onclick="TextApp.copyResult()">复制结果</button>
-        <button class="btn btn-swap" onclick="TextApp.swapToInput()">回填输入</button>
-        <button class="btn btn-red" onclick="TextApp.clearAll()">清空</button>
+        <button class="btn btn-amber" onclick="TextApp.copyResult()" data-i18n="copyResult">复制结果</button>
+        <button class="btn btn-swap" onclick="TextApp.swapToInput()" data-i18n="swapToInput">回填输入</button>
+        <button class="btn btn-red" onclick="TextApp.clearAll()" data-i18n="clear">清空</button>
       </div>
     </div>
   </div>
@@ -365,32 +396,32 @@
   <!-- ===== 图片工具 ===== -->
   <div class="tool-panel" id="panel-image">
     <div class="header">
-      <h1>图片加解密</h1>
+      <h1 data-i18n="imageTitle">图片加解密</h1>
     </div>
-    <div class="drop-zone" id="dropZone">点击或拖拽图片到此处（支持 PNG / JPG / BMP）</div>
+    <div class="drop-zone" id="dropZone" data-i18n="dropZone">点击或拖拽图片到此处（支持 PNG / JPG / BMP）</div>
     <input type="file" id="fileInput" accept="image/*" style="display:none">
     <div class="row">
       <div class="field">
-        <label>密钥</label>
+        <label data-i18n="key">密钥</label>
         <input type="text" id="imgKey" value="mimo" style="width:180px">
       </div>
       <div class="field">
-        <label>轮次</label>
+        <label data-i18n="rounds">轮次</label>
         <input type="number" id="imgRounds" value="1" min="1" max="99">
       </div>
     </div>
     <div class="btn-group">
-      <button class="btn btn-primary" id="btnEncrypt" disabled>加密图片</button>
-      <button class="btn btn-amber" id="btnDecrypt" disabled>解密图片</button>
-      <button class="btn btn-green" id="btnSave" disabled>保存 PNG</button>
-      <button class="btn" id="btnReset">清空</button>
+      <button class="btn btn-primary" id="btnEncrypt" disabled data-i18n="encryptImage">加密图片</button>
+      <button class="btn btn-amber" id="btnDecrypt" disabled data-i18n="decryptImage">解密图片</button>
+      <button class="btn btn-green" id="btnSave" disabled data-i18n="savePng">保存 PNG</button>
+      <button class="btn" id="btnReset" data-i18n="clear">清空</button>
     </div>
-    <div class="info" id="imgInfo">未加载图片</div>
-    <div class="status" id="status">就绪</div>
+    <div class="info" id="imgInfo" data-i18n="noImage">未加载图片</div>
+    <div class="status" id="status" data-i18n="ready">就绪</div>
     <div class="preview-wrap">
       <div class="canvas-box">
         <canvas id="canvas"></canvas>
-        <div class="placeholder" id="placeholder">请选择一张图片</div>
+        <div class="placeholder" id="placeholder" data-i18n="selectImage">请选择一张图片</div>
       </div>
     </div>
   </div>
@@ -399,6 +430,198 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// ================= i18n =================
+const I18N = {
+  'en': {
+    pageTitle: 'Text / Image Encrypt & Decrypt',
+    tabText: 'Text Encrypt',
+    tabTextSub: 'Key \u2192 Pseudo-random offset \u2192 Per-character shift',
+    tabImage: 'Image Encrypt',
+    tabImageSub: 'Key + Rounds \u00b7 Pixel shuffle + Byte XOR',
+    textTitle: 'Text Encrypt & Decrypt',
+    key: 'Key',
+    keyPh: 'Enter any string as key',
+    rounds: 'Rounds',
+    inputText: 'Input Text',
+    inputPh: 'Enter text to encrypt or decrypt...',
+    encrypt: 'Encrypt',
+    decrypt: 'Decrypt',
+    outputResult: 'Output',
+    outputPh: 'Result will appear here...',
+    copyResult: 'Copy Result',
+    swapToInput: 'Swap to Input',
+    clear: 'Clear',
+    imageTitle: 'Image Encrypt & Decrypt',
+    dropZone: 'Click or drag image here (PNG / JPG / BMP)',
+    encryptImage: 'Encrypt Image',
+    decryptImage: 'Decrypt Image',
+    savePng: 'Save PNG',
+    noImage: 'No image loaded',
+    ready: 'Ready',
+    selectImage: 'Please select an image',
+    msgEnterTextEnc: 'Please enter text to encrypt',
+    msgEnterTextDec: 'Please enter text to decrypt',
+    msgEncDone: 'Encryption done ({n} rounds)',
+    msgDecDone: 'Decryption done ({n} rounds)',
+    msgEnterKey: 'Please enter a key',
+    msgNoCopy: 'Nothing to copy',
+    msgCopied: 'Copied to clipboard',
+    msgCopyFail: 'Copy failed, please select text manually',
+    msgCleared: 'Cleared',
+    msgNoSwap: 'Nothing to swap',
+    msgSwapped: 'Swapped to input',
+    msgImgLoaded: 'Image loaded',
+    msgImgLoadFail: 'Image load failed',
+    msgLoadImgFirst: 'Please load an image first',
+    msgEncrypting: 'Encrypting ({n} rounds)...',
+    msgDecrypting: 'Decrypting ({n} rounds)...',
+    msgProcessFail: 'Process failed: ',
+    msgSavedPng: 'Saved as PNG',
+    msgImgInfo: 'Size: {w} \u00d7 {h} px \u00b7 {bytes} bytes',
+    msgProcessing: 'Processing, please wait...',
+    msgSaving: 'Saving...',
+    msgSavedAlbum: 'Saved to album',
+    msgSaveFail: 'Save failed: ',
+    msgOpenedExt: 'Opened external image'
+  },
+  'zh-CN': {
+    pageTitle: '\u6587\u672c / \u56fe\u7247 \u52a0\u89e3\u5bc6\u5de5\u5177',
+    tabText: '\u6587\u672c\u52a0\u89e3\u5bc6',
+    tabTextSub: '\u5bc6\u94a5 \u2192 \u4f2a\u968f\u673a\u504f\u79fb \u2192 \u9010\u5b57\u7b26\u79fb\u4f4d',
+    tabImage: '\u56fe\u7247\u52a0\u89e3\u5bc6',
+    tabImageSub: '\u5bc6\u94a5 + \u8f6e\u6b21 \u00b7 \u50cf\u7d20\u4e71\u5e8f + \u5b57\u8282\u66ff\u6362',
+    textTitle: '\u6587\u672c\u52a0\u89e3\u5bc6',
+    key: '\u5bc6\u94a5',
+    keyPh: '\u8f93\u5165\u4efb\u610f\u5b57\u7b26\u4e32\u4f5c\u4e3a\u5bc6\u94a5',
+    rounds: '\u8f6e\u6b21',
+    inputText: '\u8f93\u5165\u6587\u672c',
+    inputPh: '\u5728\u6b64\u8f93\u5165\u8981\u52a0\u5bc6\u6216\u89e3\u5bc6\u7684\u6587\u672c...',
+    encrypt: '\u52a0\u5bc6',
+    decrypt: '\u89e3\u5bc6',
+    outputResult: '\u8f93\u51fa\u7ed3\u679c',
+    outputPh: '\u7ed3\u679c\u663e\u793a\u5728\u8fd9\u91cc...',
+    copyResult: '\u590d\u5236\u7ed3\u679c',
+    swapToInput: '\u56de\u586b\u8f93\u5165',
+    clear: '\u6e05\u7a7a',
+    imageTitle: '\u56fe\u7247\u52a0\u89e3\u5bc6',
+    dropZone: '\u70b9\u51fb\u6216\u62d6\u62fd\u56fe\u7247\u5230\u6b64\u5904\uff08\u652f\u6301 PNG / JPG / BMP\uff09',
+    encryptImage: '\u52a0\u5bc6\u56fe\u7247',
+    decryptImage: '\u89e3\u5bc6\u56fe\u7247',
+    savePng: '\u4fdd\u5b58 PNG',
+    noImage: '\u672a\u52a0\u8f7d\u56fe\u7247',
+    ready: '\u5c31\u7eea',
+    selectImage: '\u8bf7\u9009\u62e9\u4e00\u5f20\u56fe\u7247',
+    msgEnterTextEnc: '\u8bf7\u8f93\u5165\u8981\u52a0\u5bc6\u7684\u6587\u672c',
+    msgEnterTextDec: '\u8bf7\u8f93\u5165\u8981\u89e3\u5bc6\u7684\u5bc6\u6587',
+    msgEncDone: '\u52a0\u5bc6\u5b8c\u6210\uff08{n} \u8f6e\uff09',
+    msgDecDone: '\u89e3\u5bc6\u5b8c\u6210\uff08{n} \u8f6e\uff09',
+    msgEnterKey: '\u8bf7\u8f93\u5165\u5bc6\u94a5',
+    msgNoCopy: '\u6ca1\u6709\u53ef\u590d\u5236\u7684\u5185\u5bb9',
+    msgCopied: '\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f',
+    msgCopyFail: '\u590d\u5236\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u9009\u62e9\u6587\u672c\u590d\u5236',
+    msgCleared: '\u5df2\u6e05\u7a7a',
+    msgNoSwap: '\u6ca1\u6709\u53ef\u56de\u586b\u7684\u5185\u5bb9',
+    msgSwapped: '\u5df2\u56de\u586b\u5230\u8f93\u5165\u6846',
+    msgImgLoaded: '\u56fe\u7247\u5df2\u52a0\u8f7d',
+    msgImgLoadFail: '\u56fe\u7247\u52a0\u8f7d\u5931\u8d25',
+    msgLoadImgFirst: '\u8bf7\u5148\u52a0\u8f7d\u56fe\u7247',
+    msgEncrypting: '\u52a0\u5bc6\u4e2d\uff08{n} \u8f6e\uff09...',
+    msgDecrypting: '\u89e3\u5bc6\u4e2d\uff08{n} \u8f6e\uff09...',
+    msgProcessFail: '\u5904\u7406\u5931\u8d25: ',
+    msgSavedPng: '\u5df2\u4fdd\u5b58\u4e3a PNG',
+    msgImgInfo: '\u5c3a\u5bf8: {w} \u00d7 {h} \u50cf\u7d20 \u00b7 {bytes} \u5b57\u8282',
+    msgProcessing: '\u6b63\u5728\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u5019...',
+    msgSaving: '\u4fdd\u5b58\u4e2d...',
+    msgSavedAlbum: '\u5df2\u4fdd\u5b58\u5230\u76f8\u518c',
+    msgSaveFail: '\u4fdd\u5b58\u5931\u8d25: ',
+    msgOpenedExt: '\u5df2\u4ece\u5916\u90e8\u6253\u5f00\u56fe\u7247'
+  },
+  'zh-TW': {
+    pageTitle: '\u6587\u5b57 / \u5716\u7247 \u52a0\u89e3\u5bc6\u5de5\u5177',
+    tabText: '\u6587\u5b57\u52a0\u89e3\u5bc6',
+    tabTextSub: '\u5bc6\u94a5 \u2192 \u507d\u96a8\u6a5f\u504f\u79fb \u2192 \u9010\u5b57\u5143\u79fb\u4f4d',
+    tabImage: '\u5716\u7247\u52a0\u89e3\u5bc6',
+    tabImageSub: '\u5bc6\u94a5 + \u8f2a\u6b21 \u00b7 \u50cf\u7d20\u4e82\u5e8f + \u5b57\u5143\u66ff\u63db',
+    textTitle: '\u6587\u5b57\u52a0\u89e3\u5bc6',
+    key: '\u5bc6\u94a5',
+    keyPh: '\u8f38\u5165\u4efb\u610f\u5b57\u4e32\u4f5c\u70ba\u5bc6\u94a5',
+    rounds: '\u8f2a\u6b21',
+    inputText: '\u8f38\u5165\u6587\u5b57',
+    inputPh: '\u5728\u6b64\u8f38\u5165\u8981\u52a0\u5bc6\u6216\u89e3\u5bc6\u7684\u6587\u5b57...',
+    encrypt: '\u52a0\u5bc6',
+    decrypt: '\u89e3\u5bc6',
+    outputResult: '\u8f38\u51fa\u7d50\u679c',
+    outputPh: '\u7d50\u679c\u986f\u793a\u5728\u9019\u88e1...',
+    copyResult: '\u8907\u88fd\u7d50\u679c',
+    swapToInput: '\u56de\u586b\u8f38\u5165',
+    clear: '\u6e05\u7a7a',
+    imageTitle: '\u5716\u7247\u52a0\u89e3\u5bc6',
+    dropZone: '\u9ede\u64ca\u6216\u62d6\u66f3\u5716\u7247\u5230\u6b64\u8655\uff08\u652f\u63f4 PNG / JPG / BMP\uff09',
+    encryptImage: '\u52a0\u5bc6\u5716\u7247',
+    decryptImage: '\u89e3\u5bc6\u5716\u7247',
+    savePng: '\u5132\u5b58 PNG',
+    noImage: '\u672a\u8f09\u5165\u5716\u7247',
+    ready: '\u5c31\u7dd2',
+    selectImage: '\u8acb\u9078\u64c7\u4e00\u5f35\u5716\u7247',
+    msgEnterTextEnc: '\u8acb\u8f38\u5165\u8981\u52a0\u5bc6\u7684\u6587\u5b57',
+    msgEnterTextDec: '\u8acb\u8f38\u5165\u8981\u89e3\u5bc6\u7684\u5bc6\u6587',
+    msgEncDone: '\u52a0\u5bc6\u5b8c\u6210\uff08{n} \u8f2a\uff09',
+    msgDecDone: '\u89e3\u5bc6\u5b8c\u6210\uff08{n} \u8f2a\uff09',
+    msgEnterKey: '\u8acb\u8f38\u5165\u5bc6\u94a5',
+    msgNoCopy: '\u6c92\u6709\u53ef\u8907\u88fd\u7684\u5167\u5bb9',
+    msgCopied: '\u5df2\u8907\u88fd\u5230\u526a\u8cbc\u7c3f',
+    msgCopyFail: '\u8907\u88fd\u5931\u6557\uff0c\u8acb\u624b\u52d5\u9078\u64c7\u6587\u5b57\u8907\u88fd',
+    msgCleared: '\u5df2\u6e05\u7a7a',
+    msgNoSwap: '\u6c92\u6709\u53ef\u56de\u586b\u7684\u5167\u5bb9',
+    msgSwapped: '\u5df2\u56de\u586b\u5230\u8f38\u5165\u6846',
+    msgImgLoaded: '\u5716\u7247\u5df2\u8f09\u5165',
+    msgImgLoadFail: '\u5716\u7247\u8f09\u5165\u5931\u6557',
+    msgLoadImgFirst: '\u8acb\u5148\u8f09\u5165\u5716\u7247',
+    msgEncrypting: '\u52a0\u5bc6\u4e2d\uff08{n} \u8f2a\uff09...',
+    msgDecrypting: '\u89e3\u5bc6\u4e2d\uff08{n} \u8f2a\uff09...',
+    msgProcessFail: '\u8655\u7406\u5931\u6557: ',
+    msgSavedPng: '\u5df2\u5132\u5b58\u70ba PNG',
+    msgImgInfo: '\u5c3a\u5bf8: {w} \u00d7 {h} \u50cf\u7d20 \u00b7 {bytes} \u4f4d\u5143\u7d44',
+    msgProcessing: '\u6b63\u5728\u8655\u7406\u4e2d\uff0c\u8acb\u7a0d\u5019...',
+    msgSaving: '\u5132\u5b58\u4e2d...',
+    msgSavedAlbum: '\u5df2\u5132\u5b58\u5230\u76f8\u7c3f',
+    msgSaveFail: '\u5132\u5b58\u5931\u6557: ',
+    msgOpenedExt: '\u5df2\u5f9e\u5916\u90e8\u958b\u555f\u5716\u7247'
+  }
+};
+
+let currentLang = localStorage.getItem('lang') || 'zh-CN';
+
+function t(key, params) {
+  let s = (I18N[currentLang] || I18N['zh-CN'])[key] || key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      s = s.replace('{' + k + '}', v);
+    }
+  }
+  return s;
+}
+
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  document.title = t('pageTitle');
+  document.documentElement.lang = currentLang === 'zh-CN' ? 'zh-CN' : currentLang === 'zh-TW' ? 'zh-TW' : 'en';
+}
+
+document.getElementById('langSelect').addEventListener('change', function() {
+  currentLang = this.value;
+  localStorage.setItem('lang', currentLang);
+  applyI18n();
+});
+
+document.getElementById('langSelect').value = currentLang;
+applyI18n();
+
 // ================= Tab 切换 =================
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -514,7 +737,7 @@ const TextApp = (function() {
 
   function getKeyString() {
     const k = document.getElementById('key').value;
-    if (!k) throw new Error('请输入密钥字符串');
+    if (!k) throw new Error(t('msgEnterKey'));
     return k;
   }
 
@@ -523,10 +746,10 @@ const TextApp = (function() {
       let text = document.getElementById('input').value;
       const key = getKeyString();
       const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
-      if (!text) { showToast('请输入要加密的文本'); return; }
+      if (!text) { showToast(t('msgEnterTextEnc')); return; }
       for (let r = 0; r < rounds; r++) text = encrypt(text, key);
       document.getElementById('output').value = text;
-      showToast(`加密完成（${rounds} 轮）`);
+      showToast(t('msgEncDone', {n: rounds}));
     } catch (e) { alert(e.message); }
   }
 
@@ -535,18 +758,18 @@ const TextApp = (function() {
       let text = document.getElementById('input').value;
       const key = getKeyString();
       const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
-      if (!text) { showToast('请输入要解密的密文'); return; }
+      if (!text) { showToast(t('msgEnterTextDec')); return; }
       for (let r = 0; r < rounds; r++) text = decrypt(text, key);
       document.getElementById('output').value = text;
-      showToast(`解密完成（${rounds} 轮）`);
+      showToast(t('msgDecDone', {n: rounds}));
     } catch (e) { alert(e.message); }
   }
 
   function copyResult() {
     const output = document.getElementById('output');
     const text = output.value;
-    if (!text) { showToast('没有可复制的内容'); return; }
-    const done = () => { output.select(); showToast('已复制到剪贴板'); };
+    if (!text) { showToast(t('msgNoCopy')); return; }
+    const done = () => { output.select(); showToast(t('msgCopied')); };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text));
     } else {
@@ -563,9 +786,9 @@ const TextApp = (function() {
     ta.select();
     try {
       document.execCommand('copy');
-      showToast('已复制到剪贴板');
+      showToast(t('msgCopied'));
     } catch (e) {
-      showToast('复制失败，请手动选择文本复制');
+      showToast(t('msgCopyFail'));
     }
     document.body.removeChild(ta);
   }
@@ -574,19 +797,18 @@ const TextApp = (function() {
     document.getElementById('input').value = '';
     document.getElementById('output').value = '';
     document.getElementById('input').focus();
-    showToast('已清空');
+    showToast(t('msgCleared'));
   }
 
   function swapToInput() {
     const output = document.getElementById('output');
-    if (!output.value) { showToast('没有可回填的内容'); return; }
+    if (!output.value) { showToast(t('msgNoSwap')); return; }
     document.getElementById('input').value = output.value;
     output.value = '';
     document.getElementById('input').focus();
-    showToast('已回填到输入框');
+    showToast(t('msgSwapped'));
   }
 
-  // Real-time offset badge
   document.getElementById('key').addEventListener('input', function() {
     const badge = document.getElementById('offsetBadge');
     const val = document.getElementById('offsetVal');
@@ -683,7 +905,6 @@ var ImageApp = (function() {
     }
   }
 
-  // ===== UI =====
   const fileInput = document.getElementById('fileInput');
   const dropZone = document.getElementById('dropZone');
   const canvas = document.getElementById('canvas');
@@ -698,7 +919,7 @@ var ImageApp = (function() {
 
   let currentW = 0, currentH = 0;
   let hasImage = false;
-  let processing = false;   // 处理中标志，防止重复点击
+  let processing = false;
 
   function setStatus(msg, type) {
     status.textContent = msg;
@@ -719,12 +940,12 @@ var ImageApp = (function() {
         hasImage = true;
         placeholder.style.display = 'none';
         canvas.style.display = 'block';
-        imgInfo.textContent = `尺寸: ${currentW} × ${currentH} 像素 · ${currentW * currentH * 4} 字节`;
+        imgInfo.textContent = t('msgImgInfo', {w: currentW, h: currentH, bytes: currentW * currentH * 4});
         btnEncrypt.disabled = false;
         btnDecrypt.disabled = false;
-        setStatus('图片已加载', 'ok');
+        setStatus(t('msgImgLoaded'), 'ok');
       };
-      img.onerror = () => { setStatus('图片加载失败', 'err'); };
+      img.onerror = () => { setStatus(t('msgImgLoadFail'), 'err'); };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
@@ -745,7 +966,7 @@ var ImageApp = (function() {
 
   function getKey() {
     const k = document.getElementById('imgKey').value;
-    if (!k) { setStatus('请输入密钥', 'err'); return null; }
+    if (!k) { setStatus(t('msgEnterKey'), 'err'); return null; }
     return k;
   }
   function getRounds() {
@@ -753,8 +974,8 @@ var ImageApp = (function() {
   }
 
   function transform(enc) {
-    if (processing) { setStatus('正在处理中，请稍候...'); return; }
-    if (!hasImage) { setStatus('请先加载图片', 'err'); return; }
+    if (processing) { setStatus(t('msgProcessing')); return; }
+    if (!hasImage) { setStatus(t('msgLoadImgFirst'), 'err'); return; }
     const key = getKey();
     if (!key) return;
     const rounds = getRounds();
@@ -764,16 +985,16 @@ var ImageApp = (function() {
     btnEncrypt.disabled = true;
     btnDecrypt.disabled = true;
     btnSave.disabled = true;
-    setStatus(enc ? `加密中（${rounds} 轮）...` : `解密中（${rounds} 轮）...`);
+    setStatus(enc ? t('msgEncrypting', {n: rounds}) : t('msgDecrypting', {n: rounds}));
     setTimeout(() => {
       try {
         if (enc) encryptImage(px, key, rounds, currentW, currentH);
         else decryptImage(px, key, rounds, currentW, currentH);
         ctx.putImageData(imgData, 0, 0);
         btnSave.disabled = false;
-        setStatus(enc ? `加密完成（${rounds} 轮）` : `解密完成（${rounds} 轮）`, 'ok');
+        setStatus(enc ? t('msgEncDone', {n: rounds}) : t('msgDecDone', {n: rounds}), 'ok');
       } catch (e) {
-        setStatus('处理失败: ' + e.message, 'err');
+        setStatus(t('msgProcessFail') + e.message, 'err');
       }
       processing = false;
       btnEncrypt.disabled = false;
@@ -785,34 +1006,32 @@ var ImageApp = (function() {
   btnDecrypt.addEventListener('click', () => transform(false));
 
   btnSave.addEventListener('click', () => {
-    if (processing) { setStatus('正在处理中，请稍候...'); return; }
+    if (processing) { setStatus(t('msgProcessing')); return; }
     processing = true;
     btnEncrypt.disabled = true;
     btnDecrypt.disabled = true;
     btnSave.disabled = true;
-    setStatus('保存中...');
+    setStatus(t('msgSaving'));
     setTimeout(() => {
       let saved = false;
       try {
         const dataUrl = canvas.toDataURL('image/png');
         const filename = 'encrypt_' + Date.now() + '.png';
-        // Android 端：保存到相册（MediaStore，Android 10+ 无需存储权限）
         if (window.AndroidBridge && typeof window.AndroidBridge.saveImage === 'function') {
           try {
             const ok = window.AndroidBridge.saveImage(dataUrl, filename);
-            if (ok) { setStatus('已保存到相册', 'ok'); saved = true; }
-          } catch (e) { /* fallback */ }
+            if (ok) { setStatus(t('msgSavedAlbum'), 'ok'); saved = true; }
+          } catch (e) { }
         }
         if (!saved) {
-          // 回退：浏览器下载
           const link = document.createElement('a');
           link.download = filename;
           link.href = dataUrl;
           link.click();
-          setStatus('已保存为 PNG', 'ok');
+          setStatus(t('msgSavedPng'), 'ok');
         }
       } catch (e) {
-        setStatus('保存失败: ' + e.message, 'err');
+        setStatus(t('msgSaveFail') + e.message, 'err');
       }
       processing = false;
       btnEncrypt.disabled = false;
@@ -827,15 +1046,14 @@ var ImageApp = (function() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     canvas.style.display = 'none';
     placeholder.style.display = 'block';
-    imgInfo.textContent = '未加载图片';
+    imgInfo.textContent = t('noImage');
     btnEncrypt.disabled = true;
     btnDecrypt.disabled = true;
     btnSave.disabled = true;
-    setStatus('已清空');
+    setStatus(t('msgCleared'));
     fileInput.value = '';
   });
 
-  // 从 Android 端接收外部打开的图片（data URL）
   function loadDataUrl(dataUrl) {
     const img = new Image();
     img.onload = () => {
@@ -848,16 +1066,15 @@ var ImageApp = (function() {
       hasImage = true;
       placeholder.style.display = 'none';
       canvas.style.display = 'block';
-      imgInfo.textContent = `尺寸: ${currentW} × ${currentH} 像素 · ${currentW * currentH * 4} 字节`;
+      imgInfo.textContent = t('msgImgInfo', {w: currentW, h: currentH, bytes: currentW * currentH * 4});
       btnEncrypt.disabled = false;
       btnDecrypt.disabled = false;
-      setStatus('已从外部打开图片', 'ok');
+      setStatus(t('msgOpenedExt'), 'ok');
     };
-    img.onerror = () => { setStatus('图片加载失败', 'err'); };
+    img.onerror = () => { setStatus(t('msgImgLoadFail'), 'err'); };
     img.src = dataUrl;
   }
 
-  // 页面加载时检查是否有外部打开的图片
   (function() {
     const pending = localStorage.getItem('pendingImage');
     if (pending) {
@@ -869,12 +1086,10 @@ var ImageApp = (function() {
   return { loadDataUrl };
 })();
 
-// Android 端注入入口：接收外部打开/分享的图片
 window.loadExternalImage = function(dataUrl) {
   const tab = document.querySelector('.tab[data-tool="image"]');
   if (tab) tab.click();
   setTimeout(() => {
-    // 从 ImageApp 取内部 loadDataUrl
     const imageApp = window.ImageApp;
     if (imageApp && typeof imageApp.loadDataUrl === 'function') {
       imageApp.loadDataUrl(dataUrl);

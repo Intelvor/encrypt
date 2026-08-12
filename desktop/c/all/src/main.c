@@ -24,9 +24,192 @@
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((void*)-4)
 #endif
 
+// ====== i18n ======
+enum { LANG_ZH_CN = 0, LANG_ZH_TW = 1, LANG_EN = 2 };
+static int g_lang = LANG_ZH_CN;
+
+typedef struct {
+    const wchar_t *windowTitle;
+    const wchar_t *tabText;
+    const wchar_t *tabImage;
+    const wchar_t *key;
+    const wchar_t *rounds;
+    const wchar_t *inputText;
+    const wchar_t *outputResult;
+    const wchar_t *encrypt;
+    const wchar_t *decrypt;
+    const wchar_t *copy;
+    const wchar_t *swap;
+    const wchar_t *clear;
+    const wchar_t *ready;
+    const wchar_t *enterKey;
+    const wchar_t *enterText;
+    const wchar_t *encDone;
+    const wchar_t *decDone;
+    const wchar_t *noCopy;
+    const wchar_t *copied;
+    const wchar_t *noSwap;
+    const wchar_t *swapped;
+    const wchar_t *cleared;
+    const wchar_t *openImage;
+    const wchar_t *savePng;
+    const wchar_t *showOrig;
+    const wchar_t *imgStatusInit;
+    const wchar_t *imgNotValid;
+    const wchar_t *imgLoaded;
+    const wchar_t *imgEnterKey;
+    const wchar_t *imgOpenFirst;
+    const wchar_t *imgSaved;
+    const wchar_t *imgSaveFail;
+    const wchar_t *langLabel;
+    const wchar_t *fileFilter;
+    const wchar_t *pngFilter;
+} LangStrings;
+
+static const LangStrings g_strings[] = {
+    {
+        L"\u52a0\u89e3\u5bc6\u5de5\u5177",
+        L"\u6587\u672c\u52a0\u89e3\u5bc6",
+        L"\u56fe\u7247\u52a0\u89e3\u5bc6",
+        L"\u5bc6\u94a5",
+        L"\u8f6e\u6b21",
+        L"\u8f93\u5165\u6587\u672c",
+        L"\u8f93\u51fa\u7ed3\u679c",
+        L"\u52a0\u5bc6",
+        L"\u89e3\u5bc6",
+        L"\u590d\u5236",
+        L"\u56de\u586b",
+        L"\u6e05\u7a7a",
+        L"\u5c31\u7eea",
+        L"\u8bf7\u8f93\u5165\u5bc6\u94a5",
+        L"\u8bf7\u8f93\u5165\u6587\u672c",
+        L"\u52a0\u5bc6\u5b8c\u6210",
+        L"\u89e3\u5bc6\u5b8c\u6210",
+        L"\u6ca1\u6709\u53ef\u590d\u5236\u7684\u5185\u5bb9",
+        L"\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f",
+        L"\u6ca1\u6709\u53ef\u56de\u586b\u7684\u5185\u5bb9",
+        L"\u5df2\u56de\u586b\u5230\u8f93\u5165\u6846",
+        L"\u5df2\u6e05\u7a7a",
+        L"\u6253\u5f00\u56fe\u7247",
+        L"\u4fdd\u5b58 PNG",
+        L"\u663e\u793a\u539f\u56fe",
+        L"\u70b9\u51fb\u300c\u6253\u5f00\u56fe\u7247\u300d\u6216\u62d6\u5165\u56fe\u7247\u6587\u4ef6\uff08PNG/JPG/BMP\uff09",
+        L"\u4e0d\u662f\u6709\u6548\u7684\u56fe\u7247",
+        L"\u5df2\u52a0\u8f7d",
+        L"\u8bf7\u8f93\u5165\u5bc6\u94a5",
+        L"\u8bf7\u5148\u6253\u5f00\u56fe\u7247",
+        L"\u5df2\u4fdd\u5b58",
+        L"\u4fdd\u5b58\u5931\u8d25",
+        L"\u8bed\u8a00",
+        L"\u56fe\u7247\u6587\u4ef6 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG \u56fe\u7247 (*.png)\0*.png\0JPEG \u56fe\u7247 (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP \u56fe\u7247 (*.bmp)\0*.bmp\0\u6240\u6709\u6587\u4ef6 (*.*)\0*.*\0",
+        L"PNG \u56fe\u7247 (*.png)\0*.png\0"
+    },
+    {
+        L"\u52a0\u89e3\u5bc6\u5de5\u5177",
+        L"\u6587\u5b57\u52a0\u89e3\u5bc6",
+        L"\u5716\u7247\u52a0\u89e3\u5bc6",
+        L"\u5bc6\u94a5",
+        L"\u8f2a\u6b21",
+        L"\u8f38\u5165\u6587\u5b57",
+        L"\u8f38\u51fa\u7d50\u679c",
+        L"\u52a0\u5bc6",
+        L"\u89e3\u5bc6",
+        L"\u8907\u88fd",
+        L"\u56de\u586b",
+        L"\u6e05\u7a7a",
+        L"\u5c31\u7dd2",
+        L"\u8acb\u8f38\u5165\u5bc6\u94a5",
+        L"\u8acb\u8f38\u5165\u6587\u5b57",
+        L"\u52a0\u5bc6\u5b8c\u6210",
+        L"\u89e3\u5bc6\u5b8c\u6210",
+        L"\u6c92\u6709\u53ef\u8907\u88fd\u7684\u5167\u5bb9",
+        L"\u5df2\u8907\u88fd\u5230\u526a\u8cbc\u7c3f",
+        L"\u6c92\u6709\u53ef\u56de\u586b\u7684\u5167\u5bb9",
+        L"\u5df2\u56de\u586b\u5230\u8f38\u5165\u6846",
+        L"\u5df2\u6e05\u7a7a",
+        L"\u958b\u555f\u5716\u7247",
+        L"\u5132\u5b58 PNG",
+        L"\u986f\u793a\u539f\u5716",
+        L"\u9ede\u64ca\u300c\u958b\u555f\u5716\u7247\u300d\u6216\u62d6\u5165\u5716\u7247\u6587\u4ef6\uff08PNG/JPG/BMP\uff09",
+        L"\u4e0d\u662f\u6709\u6548\u7684\u5716\u7247",
+        L"\u5df2\u8f09\u5165",
+        L"\u8acb\u8f38\u5165\u5bc6\u94a5",
+        L"\u8acb\u5148\u958b\u555f\u5716\u7247",
+        L"\u5df2\u5132\u5b58",
+        L"\u5132\u5b58\u5931\u6557",
+        L"\u8a9e\u8a00",
+        L"\u5716\u7247\u6587\u4ef6 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG \u5716\u7247 (*.png)\0*.png\0JPEG \u5716\u7247 (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP \u5716\u7247 (*.bmp)\0*.bmp\0\u6240\u6709\u6587\u4ef6 (*.*)\0*.*\0",
+        L"PNG \u5716\u7247 (*.png)\0*.png\0"
+    },
+    {
+        L"Encrypt & Decrypt",
+        L"Text Encrypt",
+        L"Image Encrypt",
+        L"Key",
+        L"Rounds",
+        L"Input Text",
+        L"Output",
+        L"Encrypt",
+        L"Decrypt",
+        L"Copy",
+        L"Swap",
+        L"Clear",
+        L"Ready",
+        L"Please enter a key",
+        L"Please enter text",
+        L"Encryption done",
+        L"Decryption done",
+        L"Nothing to copy",
+        L"Copied to clipboard",
+        L"Nothing to swap",
+        L"Swapped to input",
+        L"Cleared",
+        L"Open Image",
+        L"Save PNG",
+        L"Show Original",
+        L"Click \"Open Image\" or drag image file (PNG/JPG/BMP)",
+        L"Not a valid image",
+        L"Image loaded",
+        L"Please enter a key",
+        L"Please open an image first",
+        L"Saved",
+        L"Save failed",
+        L"Language",
+        L"Image files (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG images (*.png)\0*.png\0JPEG images (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP images (*.bmp)\0*.bmp\0All files (*.*)\0*.*\0",
+        L"PNG images (*.png)\0*.png\0"
+    }
+};
+
+#define S (g_strings[g_lang])
+
+static void load_lang(void)
+{
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\EncryptTool", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        DWORD val = 0, sz = sizeof(val);
+        RegQueryValueExW(hKey, L"Language", NULL, NULL, (LPBYTE)&val, &sz);
+        if (val <= LANG_EN) g_lang = (int)val;
+        RegCloseKey(hKey);
+    }
+}
+
+static void save_lang(void)
+{
+    HKEY hKey;
+    DWORD disp;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\EncryptTool", 0, NULL, 0, KEY_WRITE, NULL, &hKey, &disp) == ERROR_SUCCESS)
+    {
+        DWORD val = (DWORD)g_lang;
+        RegSetValueExW(hKey, L"Language", 0, REG_DWORD, (LPBYTE)&val, sizeof(val));
+        RegCloseKey(hKey);
+    }
+}
+
 // ====== Tab 控件 ID ======
 #define ID_TAB_TEXT     1001
 #define ID_TAB_IMAGE    1002
+#define ID_LANG_COMBO   1003
 
 // ====== 文本工具控件 ID ======
 #define ID_T_ENC     2001
@@ -61,6 +244,7 @@ static HWND g_hwndMain;
 static HFONT g_hFont;
 static int g_active_tab = 0;   // 0=文本 1=图片
 static HWND g_tabText, g_tabImage;
+static HWND g_langCombo, g_langLabel;
 
 // 前置声明
 static void layout_text(HWND hwnd);
@@ -187,22 +371,22 @@ static int t_get_rounds(void)
 static void t_transform(int encrypt)
 {
     wchar_t *key = get_text(t_key);
-    if (!key || !key[0]) { set_status(L"请输入密钥"); free(key); return; }
+    if (!key || !key[0]) { set_status(S.enterKey); free(key); return; }
     wchar_t *text = get_text(t_input);
-    if (!text || !text[0]) { set_status(L"请输入文本"); free(key); free(text); return; }
+    if (!text || !text[0]) { set_status(S.enterText); free(key); free(text); return; }
     int rounds = (int)SendMessageW(t_roundud, UDM_GETPOS, 0, 0);
     if (rounds < 1) rounds = 1;
     wchar_t *result = encrypt ? crypto_encrypt(text, key, rounds) : crypto_decrypt(text, key, rounds);
     wchar_t *win_text = to_win_lf(result);
     set_text(t_output, win_text);
-    set_status(encrypt ? L"加密完成" : L"解密完成");
+    set_status(encrypt ? S.encDone : S.decDone);
     free(key); free(text); free(result); free(win_text);
 }
 
 static void t_copy(void)
 {
     wchar_t *out = get_text(t_output);
-    if (!out || !out[0]) { set_status(L"没有可复制的内容"); free(out); return; }
+    if (!out || !out[0]) { set_status(S.noCopy); free(out); return; }
     if (OpenClipboard(g_hwndMain))
     {
         EmptyClipboard();
@@ -211,17 +395,17 @@ static void t_copy(void)
         if (h) { wchar_t *d = (wchar_t *)GlobalLock(h); memcpy(d, out, sz); GlobalUnlock(h); SetClipboardData(CF_UNICODETEXT, h); }
         CloseClipboard();
     }
-    set_status(L"已复制到剪贴板");
+    set_status(S.copied);
     free(out);
 }
 
 static void t_swap(void)
 {
     wchar_t *out = get_text(t_output);
-    if (!out || !out[0]) { set_status(L"没有可回填的内容"); free(out); return; }
+    if (!out || !out[0]) { set_status(S.noSwap); free(out); return; }
     set_text(t_input, out);
     set_text(t_output, L"");
-    set_status(L"已回填到输入框");
+    set_status(S.swapped);
     free(out); SetFocus(t_input);
 }
 
@@ -231,7 +415,7 @@ static void t_clear(void)
     set_text(t_input, L"");
     set_text(t_output, L"");
     SendMessageW(t_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
-    set_status(L"已清空");
+    set_status(S.cleared);
     SetFocus(t_input);
 }
 
@@ -350,10 +534,10 @@ static void layout_text(HWND hwnd)
 static void create_text_controls(HWND hwnd)
 {
     HMODULE mod = GetModuleHandleW(NULL);
-    t_lblIn = CreateWindowExW(0, L"STATIC", L"输入文本", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(80), px(T_TITLE_H), hwnd, NULL, mod, NULL);
-    t_lblOut = CreateWindowExW(0, L"STATIC", L"输出结果", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(80), px(T_TITLE_H), hwnd, NULL, mod, NULL);
-    t_lblKey = CreateWindowExW(0, L"STATIC", L"密钥", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(34), px(T_BTN_H), hwnd, NULL, mod, NULL);
-    t_lblRound = CreateWindowExW(0, L"STATIC", L"轮次", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(34), px(T_BTN_H), hwnd, NULL, mod, NULL);
+    t_lblIn = CreateWindowExW(0, L"STATIC", S.inputText, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(80), px(T_TITLE_H), hwnd, NULL, mod, NULL);
+    t_lblOut = CreateWindowExW(0, L"STATIC", S.outputResult, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(80), px(T_TITLE_H), hwnd, NULL, mod, NULL);
+    t_lblKey = CreateWindowExW(0, L"STATIC", S.key, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(34), px(T_BTN_H), hwnd, NULL, mod, NULL);
+    t_lblRound = CreateWindowExW(0, L"STATIC", S.rounds, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(34), px(T_BTN_H), hwnd, NULL, mod, NULL);
     t_key = CreateWindowExW(0, L"EDIT", L"mimo", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 0, 0, px(180), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ID_T_KEY, mod, NULL);
     t_round = CreateWindowExW(0, L"EDIT", L"1", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 0, 0, px(60), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ID_T_ROUND, mod, NULL);
     t_roundud = CreateWindowExW(0, UPDOWN_CLASSW, L"", WS_CHILD | WS_VISIBLE | UDS_ARROWKEYS | UDS_SETBUDDYINT, 0, 0, px(16), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ID_T_ROUNDUD, mod, NULL);
@@ -362,14 +546,14 @@ static void create_text_controls(HWND hwnd)
     SendMessageW(t_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
 
     int ids[] = { ID_T_ENC, ID_T_DEC, ID_T_COPY, ID_T_SWAP, ID_T_CLEAR };
-    const wchar_t *txts[] = { L"加密", L"解密", L"复制", L"回填", L"清空" };
+    const wchar_t *txts[] = { S.encrypt, S.decrypt, S.copy, S.swap, S.clear };
     for (int i = 0; i < 5; i++)
         t_btns[i] = CreateWindowExW(0, L"BUTTON", txts[i], WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, px(T_BTN_W), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ids[i], mod, NULL);
 
     t_input = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_INPUT, mod, NULL);
     t_split = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 0, 0, px(100), px(4), hwnd, (HMENU)(LONG_PTR)ID_T_SPLIT, mod, NULL);
     t_output = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_OUTPUT, mod, NULL);
-    t_status = CreateWindowExW(0, L"STATIC", L"就绪", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(100), px(22), hwnd, (HMENU)(LONG_PTR)ID_T_STATUS, mod, NULL);
+    t_status = CreateWindowExW(0, L"STATIC", S.ready, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(100), px(22), hwnd, (HMENU)(LONG_PTR)ID_T_STATUS, mod, NULL);
 }
 
 // ====== 图片工具：文件读取 ======
@@ -394,7 +578,7 @@ static int i_load(const wchar_t *path)
     int w, h;
     uint8_t *px = NULL;
     int rc = image_decode_file(path, &w, &h, &px);
-    if (rc != 0) { set_status(L"不是有效的图片"); return 0; }
+    if (rc != 0) { set_status(S.imgNotValid); return 0; }
     free(i_pixels); free(i_orig);
     i_pixels = px;
     i_orig = (uint8_t *)malloc((size_t)w * h * 4);
@@ -403,7 +587,7 @@ static int i_load(const wchar_t *path)
     i_dirty = 0; i_show_orig = 0;
     SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
     wchar_t info[160];
-    swprintf(info, 160, L"已加载: %d x %d (%d KB)", w, h, (int)((size_t)w * h * 4 / 1024));
+    swprintf(info, 160, L"%d x %d (%d KB)", w, h, (int)((size_t)w * h * 4 / 1024));
     set_status(info);
     InvalidateRect(i_pic, NULL, TRUE);
     i_update_zoom();
@@ -419,7 +603,7 @@ static void i_open_file(void)
     wchar_t file[1024] = L"";
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFilter = L"图片文件 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG 图片 (*.png)\0*.png\0JPEG 图片 (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP 图片 (*.bmp)\0*.bmp\0所有文件 (*.*)\0*.*\0";
+    ofn.lpstrFilter = S.fileFilter;
     ofn.lpstrFile = file;
     ofn.nMaxFile = 1024;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -436,14 +620,14 @@ static int i_rounds(void)
 
 static void i_transform(int enc)
 {
-    if (!i_pixels) { set_status(L"请先打开图片"); return; }
+    if (!i_pixels) { set_status(S.imgOpenFirst); return; }
     wchar_t *key = get_text(i_key);
-    if (!key || !key[0]) { set_status(L"请输入密钥"); free(key); return; }
+    if (!key || !key[0]) { set_status(S.imgEnterKey); free(key); return; }
     int rounds = i_rounds();
     if (enc) img_encrypt(i_pixels, key, rounds, i_w, i_h);
     else img_decrypt(i_pixels, key, rounds, i_w, i_h);
     wchar_t info[160];
-    swprintf(info, 160, L"%s完成（%d 轮） | %d x %d", enc ? L"加密" : L"解密", rounds, i_w, i_h);
+    swprintf(info, 160, L"%s (%d) | %d x %d", enc ? S.encDone : S.decDone, rounds, i_w, i_h);
     set_status(info);
     i_dirty = 1; i_show_orig = 0;
     SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
@@ -460,7 +644,7 @@ static void i_save_file(void)
     wcscpy(file, L"output.png");
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFilter = L"PNG 图片 (*.png)\0*.png\0";
+    ofn.lpstrFilter = S.pngFilter;
     ofn.lpstrFile = file;
     ofn.nMaxFile = 1024;
     ofn.Flags = OFN_OVERWRITEPROMPT;
@@ -469,10 +653,10 @@ static void i_save_file(void)
     size_t cap = (size_t)i_w * i_h * 4 * 2 + 4096;
     uint8_t *png = (uint8_t *)malloc(cap);
     size_t plen = png_encode(i_pixels, i_w, i_h, png, cap);
-    if (plen == 0) { set_status(L"PNG 编码失败"); free(png); return; }
+    if (plen == 0) { set_status(S.imgSaveFail); free(png); return; }
     FILE *f = _wfopen(file, L"wb");
-    if (f) { fwrite(png, 1, plen, f); fclose(f); set_status(L"已保存"); }
-    else set_status(L"保存失败");
+    if (f) { fwrite(png, 1, plen, f); fclose(f); set_status(S.imgSaved); }
+    else set_status(S.imgSaveFail);
     free(png);
 }
 
@@ -487,7 +671,7 @@ static void i_draw(HWND hwnd, HDC hdc)
         SetTextColor(hdc, RGB(120, 120, 120));
         SetBkMode(hdc, TRANSPARENT);
         HFONT oldFont = (HFONT)SelectObject(hdc, g_hFont);
-        const wchar_t *msg = L"点击「打开图片」或拖入图片文件（PNG/JPG/BMP）";
+        const wchar_t *msg = S.imgStatusInit;
         RECT tr = rc;
         DrawTextW(hdc, msg, -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         SelectObject(hdc, oldFont);
@@ -591,21 +775,21 @@ static void layout_image(HWND hwnd)
 static void create_image_controls(HWND hwnd)
 {
     HMODULE mod = GetModuleHandleW(NULL);
-    i_open = CreateWindowExW(0, L"BUTTON", L"打开图片", WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_OPEN, mod, NULL);
-    i_enc = CreateWindowExW(0, L"BUTTON", L"加密", WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ENC, mod, NULL);
-    i_dec = CreateWindowExW(0, L"BUTTON", L"解密", WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_DEC, mod, NULL);
-    i_save = CreateWindowExW(0, L"BUTTON", L"保存 PNG", WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_SAVE, mod, NULL);
-    i_lblKey = CreateWindowExW(0, L"STATIC", L"密钥", WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
+    i_open = CreateWindowExW(0, L"BUTTON", S.openImage, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_OPEN, mod, NULL);
+    i_enc = CreateWindowExW(0, L"BUTTON", S.encrypt, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ENC, mod, NULL);
+    i_dec = CreateWindowExW(0, L"BUTTON", S.decrypt, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_DEC, mod, NULL);
+    i_save = CreateWindowExW(0, L"BUTTON", S.savePng, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_SAVE, mod, NULL);
+    i_lblKey = CreateWindowExW(0, L"STATIC", S.key, WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
     i_key = CreateWindowExW(0, L"EDIT", L"mimo", WS_CHILD | WS_BORDER | ES_AUTOHSCROLL, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_KEY, mod, NULL);
-    i_lblRound = CreateWindowExW(0, L"STATIC", L"轮次", WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
+    i_lblRound = CreateWindowExW(0, L"STATIC", S.rounds, WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
     i_round = CreateWindowExW(0, L"EDIT", L"1", WS_CHILD | WS_BORDER | ES_NUMBER, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ROUND, mod, NULL);
     i_roundud = CreateWindowExW(0, UPDOWN_CLASSW, L"", WS_CHILD | UDS_ARROWKEYS | UDS_SETBUDDYINT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
     SendMessageW(i_roundud, UDM_SETBUDDY, (WPARAM)i_round, 0);
     SendMessageW(i_roundud, UDM_SETRANGE, 0, MAKELONG(99, 1));
     SendMessageW(i_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
-    i_chk = CreateWindowExW(0, L"BUTTON", L"显示原图", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_CHKORIG, mod, NULL);
+    i_chk = CreateWindowExW(0, L"BUTTON", S.showOrig, WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_CHKORIG, mod, NULL);
     i_pic = CreateWindowExW(WS_EX_CLIENTEDGE, L"ImgEncryptPicBox", L"", WS_CHILD, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
-    i_status = CreateWindowExW(0, L"STATIC", L"点击「打开图片」或拖入图片文件（PNG/JPG/BMP）", WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_STATUS, mod, NULL);
+    i_status = CreateWindowExW(0, L"STATIC", S.imgStatusInit, WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_STATUS, mod, NULL);
     i_zoom = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_RIGHT, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ZOOM, mod, NULL);
 }
 
@@ -667,6 +851,34 @@ static void apply_font_all(void)
     SendMessageW(i_pic, WM_SETFONT, (WPARAM)g_hFont, TRUE);
 }
 
+static void apply_lang(void)
+{
+    SetWindowTextW(g_hwndMain, S.windowTitle);
+    SetWindowTextW(g_tabText, S.tabText);
+    SetWindowTextW(g_tabImage, S.tabImage);
+    SetWindowTextW(g_langLabel, S.langLabel);
+
+    set_text(t_lblKey, S.key);
+    set_text(t_lblRound, S.rounds);
+    set_text(t_lblIn, S.inputText);
+    set_text(t_lblOut, S.outputResult);
+    set_text(t_btns[0], S.encrypt);
+    set_text(t_btns[1], S.decrypt);
+    set_text(t_btns[2], S.copy);
+    set_text(t_btns[3], S.swap);
+    set_text(t_btns[4], S.clear);
+    set_text(t_status, S.ready);
+
+    set_text(i_open, S.openImage);
+    set_text(i_enc, S.encrypt);
+    set_text(i_dec, S.decrypt);
+    set_text(i_save, S.savePng);
+    set_text(i_lblKey, S.key);
+    set_text(i_lblRound, S.rounds);
+    set_text(i_chk, S.showOrig);
+    set_text(i_status, S.imgStatusInit);
+}
+
 // ====== 主窗口过程 ======
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
@@ -678,6 +890,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         // Tab
         case ID_TAB_TEXT: switch_tab(0); break;
         case ID_TAB_IMAGE: switch_tab(1); break;
+        case ID_LANG_COMBO:
+            if (HIWORD(wp) == CBN_SELCHANGE)
+            {
+                int sel = (int)SendMessageW(g_langCombo, CB_GETCURSEL, 0, 0);
+                if (sel >= 0 && sel <= LANG_EN)
+                {
+                    g_lang = sel;
+                    save_lang();
+                    apply_lang();
+                    InvalidateRect(g_hwndMain, NULL, TRUE);
+                }
+            }
+            break;
         // 文本
         case ID_T_ENC: t_transform(1); break;
         case ID_T_DEC: t_transform(0); break;
@@ -712,8 +937,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         break;
 
     case WM_SIZE:
-        if (g_active_tab == 0) layout_text(hwnd);
-        else layout_image(hwnd);
+        {
+            RECT cr; GetClientRect(hwnd, &cr);
+            int cw = cr.right - cr.left;
+            MoveWindow(g_langLabel, cw - px(170), px(12), px(70), px(22), TRUE);
+            MoveWindow(g_langCombo, cw - px(96), px(10), px(90), px(200), TRUE);
+            if (g_active_tab == 0) layout_text(hwnd);
+            else layout_image(hwnd);
+        }
         break;
 
     case WM_DPICHANGED:
@@ -823,6 +1054,7 @@ static void enable_dpi_awareness(void)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
 {
     enable_dpi_awareness();
+    load_lang();
 
     // --selftest 支持
     for (const wchar_t *p = GetCommandLineW(); *p; p++)
@@ -877,7 +1109,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
     }
 
     int win_w = px(960), win_h = px(720);
-    g_hwndMain = CreateWindowExW(0, L"AllEncryptApp", L"加解密工具",
+    g_hwndMain = CreateWindowExW(0, L"AllEncryptApp", S.windowTitle,
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, win_w, win_h,
         NULL, NULL, hInstance, NULL);
 
@@ -885,10 +1117,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
     DragAcceptFiles(g_hwndMain, TRUE);
 
     // ===== Tab 按钮 =====
-    g_tabText = CreateWindowExW(0, L"BUTTON", L"文本加解密", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+    g_tabText = CreateWindowExW(0, L"BUTTON", S.tabText, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         0, 0, 10, 10, g_hwndMain, (HMENU)(LONG_PTR)ID_TAB_TEXT, hInstance, NULL);
-    g_tabImage = CreateWindowExW(0, L"BUTTON", L"图片加解密", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+    g_tabImage = CreateWindowExW(0, L"BUTTON", S.tabImage, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         0, 0, 10, 10, g_hwndMain, (HMENU)(LONG_PTR)ID_TAB_IMAGE, hInstance, NULL);
+
+    // ===== 语言选择 =====
+    g_langLabel = CreateWindowExW(0, L"STATIC", S.langLabel, WS_CHILD | WS_VISIBLE | SS_LEFT,
+        0, 0, 10, 10, g_hwndMain, NULL, hInstance, NULL);
+    g_langCombo = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        0, 0, 10, 200, g_hwndMain, (HMENU)(LONG_PTR)ID_LANG_COMBO, hInstance, NULL);
+    SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)L"\u7b80\u4f53\u4e2d\u6587");
+    SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)L"\u7e41\u9ad4\u4e2d\u6587");
+    SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)L"English");
+    SendMessageW(g_langCombo, CB_SETCURSEL, (WPARAM)g_lang, 0);
 
     // ===== 文本工具控件 =====
     create_text_controls(g_hwndMain);
@@ -907,8 +1149,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
     // 初始布局（含 Tab 位置）
     RECT cr; GetClientRect(g_hwndMain, &cr);
     int cw = cr.right - cr.left;
-    MoveWindow(g_tabText, px(8), px(8), px(120), px(30), TRUE);
-    MoveWindow(g_tabImage, px(136), px(8), px(120), px(30), TRUE);
+    MoveWindow(g_tabText, px(8), px(8), px(140), px(30), TRUE);
+    MoveWindow(g_tabImage, px(156), px(8), px(140), px(30), TRUE);
+    MoveWindow(g_langLabel, cw - px(170), px(12), px(70), px(22), TRUE);
+            MoveWindow(g_langCombo, cw - px(96), px(10), px(90), px(200), TRUE);
+    SendMessageW(g_langLabel, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(g_langCombo, WM_SETFONT, (WPARAM)g_hFont, TRUE);
 
     switch_tab(0);
     layout_text(g_hwndMain);
@@ -938,7 +1184,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
             EnableWindow(i_dec, TRUE);
             switch_tab(1);
             layout_image(g_hwndMain);
-            set_status(L"演示图已加载（400 x 300）");
+            set_status(S.imgLoaded);
             InvalidateRect(i_pic, NULL, TRUE);
         }
     }

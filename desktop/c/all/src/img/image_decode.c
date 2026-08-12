@@ -1,7 +1,6 @@
-// image_decode.c - 统一图片解码（纯 C + GDI+ flat API 静态链接）
-// PNG 用自带解码器；JPG/BMP/GIF/TIFF 用 GDI+（Windows XP+ 系统自带 gdiplus.dll）
+// image_decode.c - 统一图片解码（GDI+ flat API 静态链接）
+// PNG/JPG/BMP/GIF/TIFF 全部用 GDI+（Windows XP+ 系统自带 gdiplus.dll）
 #include "image_decode.h"
-#include "png.h"
 #include <windows.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +8,11 @@
 
 // ====== GDI+ flat API 声明（纯 C，链接 gdiplus.lib） ======
 // GDI+ 类型
+#if defined(_WIN64)
+typedef unsigned long long ULONG_PTR_T;
+#else
 typedef unsigned long ULONG_PTR_T;
+#endif
 typedef struct { int X, Y, Width, Height; } GpRectT;
 typedef struct {
     unsigned int Width;
@@ -17,7 +20,7 @@ typedef struct {
     int Stride;
     unsigned int PixelFormat;
     void *Scan0;
-    unsigned int Reserved;
+    ULONG_PTR_T Reserved;
 } GpBitmapDataT;
 
 typedef int Status;
@@ -49,13 +52,20 @@ __declspec(dllimport) Status WINAPI GdipDisposeImage(void*);
 #define ImageLockModeRead 0x00000001
 
 // GdiplusStartupInput：GdiplusVersion=1, callback=NULL, suppress=FALSE, FALSE
-// 与 MinGW 的 GdiplusStartupInput 布局一致（16 字节）
-static unsigned char gdi_input[16] = { 1,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0 };
+// 必须用结构体（含指针）声明，以适配指针宽度：
+//   x86 = 16 字节，x64 = 24 字节；若用固定 16 字节数组，x64 下越界导致初始化失败
+typedef struct {
+    unsigned int GdiplusVersion;
+    void *DebugEventCallback;
+    int SuppressBackgroundThread;
+    int SuppressExternalCodecs;
+} GdiplusStartupInputT;
+static GdiplusStartupInputT gdi_input = { 1, NULL, 0, 0 };
 
 static void gdiplus_init(void)
 {
     if (gdiplus_ok) return;
-    if (GdiplusStartup(&gdiplus_token, gdi_input, NULL) == 0)
+    if (GdiplusStartup(&gdiplus_token, &gdi_input, NULL) == 0)
         gdiplus_ok = 1;
 }
 
@@ -117,34 +127,9 @@ static int decode_gdiplus(const wchar_t *path, int *width, int *height, uint8_t 
     return 0;
 }
 
-// 统一解码入口
+// 统一解码入口（全部走 GDI+，含 PNG/JPG/BMP/GIF/TIFF）
 int image_decode_file(const wchar_t *path, int *width, int *height, uint8_t **pixels)
 {
-    FILE *f = _wfopen(path, L"rb");
-    if (!f) return 1;
-    uint8_t sig[8] = {0};
-    size_t got = fread(sig, 1, 8, f);
-    fclose(f);
-
-    static const uint8_t png_sig[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
-    if (got >= 8 && memcmp(sig, png_sig, 8) == 0)
-    {
-        size_t len;
-        uint8_t *file = NULL;
-        FILE *fp = _wfopen(path, L"rb");
-        if (!fp) return 1;
-        fseek(fp, 0, SEEK_END);
-        long n = ftell(fp);
-        fseek(fp, 0, SEEK_SET);
-        if (n <= 0) { fclose(fp); return 1; }
-        file = (uint8_t *)malloc((size_t)n);
-        if (!file) { fclose(fp); return 1; }
-        fread(file, 1, (size_t)n, fp);
-        fclose(fp);
-        int rc = png_decode(file, (size_t)n, width, height, pixels);
-        free(file);
-        return rc;
-    }
-
+    // PNG 也交给 GDI+（GDI+ 原生支持 PNG 解码），无需自带解码器
     return decode_gdiplus(path, width, height, pixels);
 }
