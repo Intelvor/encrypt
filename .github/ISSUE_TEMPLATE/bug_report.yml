@@ -1,0 +1,58 @@
+name: 问题报告
+description: 提交使用中遇到的 bug 或异常（请务必按模板填写）
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请完整填写以下信息，能大大加快问题定位速度。
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / 平台
+      description: 使用哪个版本，运行在什么系统上
+      placeholder: 例：encrypt-x64.exe · Windows 11 或 网页版 · Chrome
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: 所属功能
+      description: 问题出在哪个功能
+      options:
+        - 文本加解密
+        - 图片加解密
+        - 其他 / 界面问题
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 一步一步描述如何触发问题
+      placeholder: |
+        1. 打开软件，输入 xxx
+        2. 填入密钥 xxx，轮次 xx
+        3. 点击「加密」/「解密」
+        4. 结果……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      description: 你认为应该出现什么结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 实际发生了什么（请描述报错信息 / 现象 / 截图）
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 输入文本样例、密钥类型、图片格式等可能有帮助的信息（注意：请勿粘贴敏感或真实私密数据）

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用说明
+    url: https://github.com/Intelvor/encrypt/blob/master/README.md
+    about: 提交前请先阅读 README 中的使用方法

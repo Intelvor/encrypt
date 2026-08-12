@@ -1,0 +1,29 @@
+name: 功能建议
+description: 建议新功能或改进现有功能
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的建议！请描述清楚场景和期望，便于评估。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到了什么问题 / 使用场景
+      description: 在什么情况下需要这个功能
+      placeholder: 例：经常需要批量加密多个文件……
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望的解决方案
+      description: 你希望软件如何实现 / 如何交互
+      placeholder: 例：增加批量选择文件后一键加密，输出到指定目录……
+    validations:
+      required: true
+  - type: textarea
+    id: alt
+    attributes:
+      label: 其他方案或说明
+      description: 可选的替代思路或任何补充
