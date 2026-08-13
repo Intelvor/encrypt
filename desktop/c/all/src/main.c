@@ -41,6 +41,7 @@ typedef struct {
     const wchar_t *copy;
     const wchar_t *swap;
     const wchar_t *clear;
+    const wchar_t *paste;
     const wchar_t *ready;
     const wchar_t *enterKey;
     const wchar_t *enterText;
@@ -48,6 +49,7 @@ typedef struct {
     const wchar_t *decDone;
     const wchar_t *noCopy;
     const wchar_t *copied;
+    const wchar_t *noPaste;
     const wchar_t *noSwap;
     const wchar_t *swapped;
     const wchar_t *cleared;
@@ -80,6 +82,7 @@ static const LangStrings g_strings[] = {
         L"\u590d\u5236",
         L"\u56de\u586b",
         L"\u6e05\u7a7a",
+        L"\u7c98\u8d34",
         L"\u5c31\u7eea",
         L"\u8bf7\u8f93\u5165\u5bc6\u94a5",
         L"\u8bf7\u8f93\u5165\u6587\u672c",
@@ -87,6 +90,7 @@ static const LangStrings g_strings[] = {
         L"\u89e3\u5bc6\u5b8c\u6210",
         L"\u6ca1\u6709\u53ef\u590d\u5236\u7684\u5185\u5bb9",
         L"\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f",
+        L"\u526a\u8d34\u677f\u4e3a\u7a7a\u6216\u4e0d\u662f\u6587\u672c",
         L"\u6ca1\u6709\u53ef\u56de\u586b\u7684\u5185\u5bb9",
         L"\u5df2\u56de\u586b\u5230\u8f93\u5165\u6846",
         L"\u5df2\u6e05\u7a7a",
@@ -117,6 +121,7 @@ static const LangStrings g_strings[] = {
         L"\u8907\u88fd",
         L"\u56de\u586b",
         L"\u6e05\u7a7a",
+        L"\u8cbc\u4e0a",
         L"\u5c31\u7dd2",
         L"\u8acb\u8f38\u5165\u5bc6\u94a5",
         L"\u8acb\u8f38\u5165\u6587\u5b57",
@@ -124,6 +129,7 @@ static const LangStrings g_strings[] = {
         L"\u89e3\u5bc6\u5b8c\u6210",
         L"\u6c92\u6709\u53ef\u8907\u88fd\u7684\u5167\u5bb9",
         L"\u5df2\u8907\u88fd\u5230\u526a\u8cbc\u7c3f",
+        L"\u526a\u8cbc\u7c3f\u7a7a\u6216\u4e0d\u662f\u6587\u5b57",
         L"\u6c92\u6709\u53ef\u56de\u586b\u7684\u5167\u5bb9",
         L"\u5df2\u56de\u586b\u5230\u8f38\u5165\u6846",
         L"\u5df2\u6e05\u7a7a",
@@ -154,6 +160,7 @@ static const LangStrings g_strings[] = {
         L"Copy",
         L"Swap",
         L"Clear",
+        L"Paste",
         L"Ready",
         L"Please enter a key",
         L"Please enter text",
@@ -161,6 +168,7 @@ static const LangStrings g_strings[] = {
         L"Decryption done",
         L"Nothing to copy",
         L"Copied to clipboard",
+        L"Clipboard empty or not text",
         L"Nothing to swap",
         L"Swapped to input",
         L"Cleared",
@@ -217,6 +225,7 @@ static void save_lang(void)
 #define ID_T_COPY    2003
 #define ID_T_SWAP    2004
 #define ID_T_CLEAR   2005
+#define ID_T_PASTE   2013
 #define ID_T_KEY     2006
 #define ID_T_ROUNDUD 2007
 #define ID_T_ROUND   2008
@@ -255,7 +264,7 @@ static void i_update_zoom(void);
 
 // ====== 文本工具 ======
 static HWND t_key, t_round, t_roundud, t_input, t_output, t_status, t_split;
-static HWND t_btns[5];
+static HWND t_btns[6];
 static HWND t_lblKey, t_lblRound, t_lblIn, t_lblOut;
 static int t_splitY = -1;   // 分割条逻辑位置；-1 表示首次布局时自动设为输入/输出等高
 static int t_dragging = 0;
@@ -277,7 +286,7 @@ static void set_text(HWND h, const wchar_t *s);
 enum { ST_NONE = 0, ST_READY, ST_TEXT_OP, ST_IMG_INIT, ST_IMG_LOADED, ST_IMG_OP };
 enum { SMSG_NONE = 0, SMSG_ENTER_KEY, SMSG_ENTER_TEXT, SMSG_NO_COPY, SMSG_COPIED,
        SMSG_NO_SWAP, SMSG_SWAPPED, SMSG_CLEARED, SMSG_IMG_NOT_VALID, SMSG_IMG_OPEN_FIRST,
-       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED };
+       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED, SMSG_NO_PASTE };
 static struct {
     int type;
     int msg;
@@ -304,6 +313,7 @@ static const wchar_t *smsg_text(int msg)
     case SMSG_IMG_SAVE_FAIL:  return S.imgSaveFail;
     case SMSG_IMG_SAVED:      return S.imgSaved;
     case SMSG_IMG_LOADED:     return S.imgLoaded;
+    case SMSG_NO_PASTE:       return S.noPaste;
     default:                  return S.ready;
     }
 }
@@ -408,8 +418,8 @@ static HFONT make_font(int h)
 }
 
 // ====== Tab 切换 ======
-static void show_text_tab(void) { ShowWindow(t_key, SW_SHOW); ShowWindow(t_round, SW_SHOW); ShowWindow(t_roundud, SW_SHOW); ShowWindow(t_input, SW_SHOW); ShowWindow(t_output, SW_SHOW); ShowWindow(t_status, SW_SHOW); ShowWindow(t_split, SW_SHOW); ShowWindow(t_lblKey, SW_SHOW); ShowWindow(t_lblRound, SW_SHOW); ShowWindow(t_lblIn, SW_SHOW); ShowWindow(t_lblOut, SW_SHOW); for (int i = 0; i < 5; i++) ShowWindow(t_btns[i], SW_SHOW); }
-static void hide_text_tab(void) { ShowWindow(t_key, SW_HIDE); ShowWindow(t_round, SW_HIDE); ShowWindow(t_roundud, SW_HIDE); ShowWindow(t_input, SW_HIDE); ShowWindow(t_output, SW_HIDE); ShowWindow(t_status, SW_HIDE); ShowWindow(t_split, SW_HIDE); ShowWindow(t_lblKey, SW_HIDE); ShowWindow(t_lblRound, SW_HIDE); ShowWindow(t_lblIn, SW_HIDE); ShowWindow(t_lblOut, SW_HIDE); for (int i = 0; i < 5; i++) ShowWindow(t_btns[i], SW_HIDE); }
+static void show_text_tab(void) { ShowWindow(t_key, SW_SHOW); ShowWindow(t_round, SW_SHOW); ShowWindow(t_roundud, SW_SHOW); ShowWindow(t_input, SW_SHOW); ShowWindow(t_output, SW_SHOW); ShowWindow(t_status, SW_SHOW); ShowWindow(t_split, SW_SHOW); ShowWindow(t_lblKey, SW_SHOW); ShowWindow(t_lblRound, SW_SHOW); ShowWindow(t_lblIn, SW_SHOW); ShowWindow(t_lblOut, SW_SHOW); for (int i = 0; i < 6; i++) ShowWindow(t_btns[i], SW_SHOW); }
+static void hide_text_tab(void) { ShowWindow(t_key, SW_HIDE); ShowWindow(t_round, SW_HIDE); ShowWindow(t_roundud, SW_HIDE); ShowWindow(t_input, SW_HIDE); ShowWindow(t_output, SW_HIDE); ShowWindow(t_status, SW_HIDE); ShowWindow(t_split, SW_HIDE); ShowWindow(t_lblKey, SW_HIDE); ShowWindow(t_lblRound, SW_HIDE); ShowWindow(t_lblIn, SW_HIDE); ShowWindow(t_lblOut, SW_HIDE); for (int i = 0; i < 6; i++) ShowWindow(t_btns[i], SW_HIDE); }
 static void show_image_tab(void) { ShowWindow(i_open, SW_SHOW); ShowWindow(i_enc, SW_SHOW); ShowWindow(i_dec, SW_SHOW); ShowWindow(i_save, SW_SHOW); ShowWindow(i_btnCopy, SW_SHOW); ShowWindow(i_btnClear, SW_SHOW); ShowWindow(i_lblKey, SW_SHOW); ShowWindow(i_key, SW_SHOW); ShowWindow(i_lblRound, SW_SHOW); ShowWindow(i_round, SW_SHOW); ShowWindow(i_roundud, SW_SHOW); ShowWindow(i_status, SW_SHOW); ShowWindow(i_chk, SW_SHOW); ShowWindow(i_zoom, SW_SHOW); ShowWindow(i_pic, SW_SHOW); }
 static void hide_image_tab(void) { ShowWindow(i_open, SW_HIDE); ShowWindow(i_enc, SW_HIDE); ShowWindow(i_dec, SW_HIDE); ShowWindow(i_save, SW_HIDE); ShowWindow(i_btnCopy, SW_HIDE); ShowWindow(i_btnClear, SW_HIDE); ShowWindow(i_lblKey, SW_HIDE); ShowWindow(i_key, SW_HIDE); ShowWindow(i_lblRound, SW_HIDE); ShowWindow(i_round, SW_HIDE); ShowWindow(i_roundud, SW_HIDE); ShowWindow(i_status, SW_HIDE); ShowWindow(i_chk, SW_HIDE); ShowWindow(i_zoom, SW_HIDE); ShowWindow(i_pic, SW_HIDE); }
 
@@ -521,7 +531,20 @@ static void t_clear(void)
     SetFocus(t_input);
 }
 
-// ====== 文本工具：布局 ======
+static void t_paste(void)
+{
+    if (!OpenClipboard(g_hwndMain)) { g_st.type = ST_NONE; g_st.msg = SMSG_NO_PASTE; set_status(S.noPaste); return; }
+    HANDLE h = GetClipboardData(CF_UNICODETEXT);
+    if (!h) { CloseClipboard(); g_st.type = ST_NONE; g_st.msg = SMSG_NO_PASTE; set_status(S.noPaste); return; }
+    const wchar_t *clip = (const wchar_t *)GlobalLock(h);
+    if (!clip || !clip[0]) { GlobalUnlock(h); CloseClipboard(); g_st.type = ST_NONE; g_st.msg = SMSG_NO_PASTE; set_status(S.noPaste); return; }
+    set_text(t_input, clip);
+    GlobalUnlock(h);
+    CloseClipboard();
+    g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
+    set_status(S.copied);
+    SetFocus(t_input);
+}
 static void layout_text(HWND hwnd)
 {
     RECT rc;
@@ -549,22 +572,22 @@ static void layout_text(HWND hwnd)
     int row0_content = padding + label_w + label_gap + key_input_w + px(12)
         + round_label_w + label_gap + round_w + round_updown_w + px(16);
     int btn_start_x = row0_content;
-    int btn_row_w = btn_w * 5 + btn_gap * 4;
+    int btn_row_w = btn_w * 6 + btn_gap * 5;
 
     int top_row_h = btn_h + row_y_gap;
     int top_bar_h, btn_row1_count = 0, btn_row2_count = 0;
 
     if (btn_start_x + btn_row_w <= W - padding)
     {
-        btn_row1_count = 5;
+        btn_row1_count = 6;
         top_bar_h = top_row_h;
     }
     else
     {
         btn_row1_count = 0; btn_row2_count = 0;
         int avail_row1 = (W - padding) - btn_start_x;
-        int remaining = 5, cur_w = 0;
-        for (int i = 0; i < 5 && remaining > 0; i++)
+        int remaining = 6, cur_w = 0;
+        for (int i = 0; i < 6 && remaining > 0; i++)
         {
             int add = btn_w + (i > 0 ? btn_gap : 0);
             if (cur_w + add > avail_row1 && btn_row1_count > 0) break;
@@ -647,12 +670,12 @@ static void create_text_controls(HWND hwnd)
     SendMessageW(t_roundud, UDM_SETRANGE, 0, MAKELONG(99, 1));
     SendMessageW(t_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
 
-    int ids[] = { ID_T_ENC, ID_T_DEC, ID_T_COPY, ID_T_SWAP, ID_T_CLEAR };
-    const wchar_t *txts[] = { S.encrypt, S.decrypt, S.copy, S.swap, S.clear };
-    for (int i = 0; i < 5; i++)
+    int ids[] = { ID_T_ENC, ID_T_DEC, ID_T_COPY, ID_T_SWAP, ID_T_CLEAR, ID_T_PASTE };
+    const wchar_t *txts[] = { S.encrypt, S.decrypt, S.copy, S.swap, S.clear, S.paste };
+    for (int i = 0; i < 6; i++)
         t_btns[i] = CreateWindowExW(0, L"BUTTON", txts[i], WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, px(T_BTN_W), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ids[i], mod, NULL);
 
-    t_input = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_INPUT, mod, NULL);
+    t_input = CreateWindowExW(WS_EX_CLIENTEDGE | WS_EX_ACCEPTFILES, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_INPUT, mod, NULL);
     t_split = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 0, 0, px(100), px(4), hwnd, (HMENU)(LONG_PTR)ID_T_SPLIT, mod, NULL);
     t_output = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_OUTPUT, mod, NULL);
     t_status = CreateWindowExW(0, L"STATIC", S.ready, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(100), px(22), hwnd, (HMENU)(LONG_PTR)ID_T_STATUS, mod, NULL);
@@ -1013,7 +1036,7 @@ static void apply_font_all(void)
     SendMessageW(t_input, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(t_output, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(t_status, WM_SETFONT, (WPARAM)g_hFont, TRUE);
-    for (int i = 0; i < 5; i++) SendMessageW(t_btns[i], WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    for (int i = 0; i < 6; i++) SendMessageW(t_btns[i], WM_SETFONT, (WPARAM)g_hFont, TRUE);
     // 图片
     SendMessageW(i_open, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(i_enc, WM_SETFONT, (WPARAM)g_hFont, TRUE);
@@ -1048,6 +1071,7 @@ static void apply_lang(void)
     set_text(t_btns[2], S.copy);
     set_text(t_btns[3], S.swap);
     set_text(t_btns[4], S.clear);
+    set_text(t_btns[5], S.paste);
     rebuild_status();
 
     set_text(i_open, S.openImage);
@@ -1091,6 +1115,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case ID_T_COPY: t_copy(); break;
         case ID_T_SWAP: t_swap(); break;
         case ID_T_CLEAR: t_clear(); break;
+        case ID_T_PASTE: t_paste(); break;
         // 图片
         case ID_I_OPEN: i_open_file(); break;
         case ID_I_ENC: i_transform(1); break;
@@ -1107,14 +1132,49 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
     case WM_DROPFILES:
         {
-            // 拖拽文件放入：切换到图片 Tab 并加载
             HDROP hDrop = (HDROP)wp;
             wchar_t path[1024];
             UINT n = DragQueryFileW(hDrop, 0, path, 1024);
             if (n > 0)
             {
-                if (g_active_tab != 1) switch_tab(1);
-                i_load(path);
+                if (g_active_tab == 0)
+                {
+                    FILE *f = _wfopen(path, L"rb");
+                    if (f)
+                    {
+                        fseek(f, 0, SEEK_END);
+                        long sz = ftell(f);
+                        fseek(f, 0, SEEK_SET);
+                        if (sz > 0 && sz < 10 * 1024 * 1024)
+                        {
+                            char *buf = (char *)malloc((size_t)sz + 1);
+                            if (buf)
+                            {
+                                fread(buf, 1, (size_t)sz, f);
+                                buf[sz] = 0;
+                                int wlen = MultiByteToWideChar(CP_UTF8, 0, buf, -1, NULL, 0);
+                                if (wlen > 0)
+                                {
+                                    wchar_t *wbuf = (wchar_t *)malloc((size_t)wlen * sizeof(wchar_t));
+                                    if (wbuf)
+                                    {
+                                        MultiByteToWideChar(CP_UTF8, 0, buf, -1, wbuf, wlen);
+                                        set_text(t_input, wbuf);
+                                        free(wbuf);
+                                        g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
+                                        set_status(S.copied);
+                                    }
+                                }
+                                free(buf);
+                            }
+                        }
+                        fclose(f);
+                    }
+                }
+                else
+                {
+                    i_load(path);
+                }
             }
             DragFinish(hDrop);
         }
