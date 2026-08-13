@@ -621,12 +621,16 @@ static LRESULT CALLBACK OutputSubProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         {
             int dx = GET_X_LPARAM(lp) - g_dragStart.x;
             int dy = GET_Y_LPARAM(lp) - g_dragStart.y;
-            int cx = GetSystemMetrics(SM_CXDRAG), cy = GetSystemMetrics(SM_CYDRAG);
-            if (dx > cx || dx < -cx || dy > cy || dy < -cy)
+            if (dx > 20 || dx < -20 || dy > 20 || dy < -20)
             {
-                g_dragPending = 0;
-                start_text_drag(hwnd);
-                return 0;
+                DWORD s0, s1;
+                SendMessageW(hwnd, EM_GETSEL, (WPARAM)&s0, (LPARAM)&s1);
+                if (s0 < s1)
+                {
+                    g_dragPending = 0;
+                    start_text_drag(hwnd);
+                    return 0;
+                }
             }
         }
         break;
