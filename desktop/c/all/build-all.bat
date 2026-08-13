@@ -16,7 +16,7 @@ if not exist "%OUT%" mkdir "%OUT%"
 echo === Building 32-bit (x86) ===
 windres --preprocessor "gcc" %PREARGS% --target=pe-i386 -i "%RES%\app.rc" -o "%OUT%\all-app.o" -I "%RES%"
 if errorlevel 1 goto fail
-%GCC% -m32 -Os -s -mwindows -I"%SRC%" -I"%SRC%\img" -o "%OUT%\encrypt.exe" "%SRC%\main.c" "%SRC%\crypto.c" "%SRC%\img\crypto_img.c" "%SRC%\img\png.c" "%SRC%\img\image_decode.c" "%OUT%\all-app.o" -lcomctl32 -lgdi32 -luser32 -lgdiplus -lm
+%GCC% -m32 -Os -s -mwindows -I"%SRC%" -I"%SRC%\img" -o "%OUT%\encrypt.exe" "%SRC%\main.c" "%SRC%\crypto.c" "%SRC%\img\crypto_img.c" "%SRC%\img\png.c" "%SRC%\img\image_decode.c" "%OUT%\all-app.o" -lcomctl32 -lgdi32 -luser32 -lgdiplus -lole32 -lm
 if errorlevel 1 goto fail
 
 echo BUILD OK

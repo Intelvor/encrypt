@@ -5,6 +5,10 @@
 #include <windowsx.h>
 #include <shellapi.h>
 #include <stdlib.h>
+#include <ole2.h>
+
+static const GUID my_IID_IUnknown2 = {0x00000000,0x0000,0x0000,{0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46}};
+static const GUID my_IID_IDropSource = {0x00000121,0x0000,0x0000,{0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46}};
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
@@ -550,6 +554,92 @@ static void t_paste(void)
     set_status(S.pasted);
     SetFocus(t_input);
 }
+
+static HRESULT STDMETHODCALLTYPE MyDS_QI(IDropSource *This, REFIID riid, void **ppv)
+{
+    if (!memcmp(riid, &my_IID_IUnknown2, sizeof(*riid)) || !memcmp(riid, &my_IID_IDropSource, sizeof(*riid)))
+    { *ppv = This; return S_OK; }
+    *ppv = NULL; return E_NOINTERFACE;
+}
+static ULONG STDMETHODCALLTYPE MyDS_AddRef(IDropSource *This) { return 2; }
+static ULONG STDMETHODCALLTYPE MyDS_Release(IDropSource *This) { return 1; }
+static HRESULT STDMETHODCALLTYPE MyDS_QueryContinueDrag(IDropSource *This, BOOL esc, DWORD keys)
+{
+    if (esc) return DRAGDROP_S_CANCEL;
+    if (!(keys & MK_LBUTTON)) return DRAGDROP_S_DROP;
+    return S_OK;
+}
+static HRESULT STDMETHODCALLTYPE MyDS_GiveFeedback(IDropSource *This, DWORD dwEffect)
+{ return DRAGDROP_S_USEDEFAULTCURSORS; }
+
+static IDropSourceVtbl g_dsVtbl = { MyDS_QI, MyDS_AddRef, MyDS_Release, MyDS_QueryContinueDrag, MyDS_GiveFeedback };
+static IDropSource g_dropSource = { &g_dsVtbl };
+
+static POINT g_dragStart;
+static int g_dragPending;
+
+static void start_text_drag(HWND output)
+{
+    DWORD selStart, selEnd;
+    SendMessageW(output, EM_GETSEL, (WPARAM)&selStart, (LPARAM)&selEnd);
+    if (selStart >= selEnd) return;
+    int len = GetWindowTextLengthW(output);
+    if (len <= 0) return;
+    wchar_t *text = (wchar_t *)malloc(((size_t)len + 1) * sizeof(wchar_t));
+    if (!text) return;
+    GetWindowTextW(output, text, len + 1);
+    int selLen = (int)(selEnd - selStart);
+    if (OpenClipboard(g_hwndMain))
+    {
+        EmptyClipboard();
+        HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, ((size_t)selLen + 1) * sizeof(wchar_t));
+        if (h) { wchar_t *d = (wchar_t *)GlobalLock(h); memcpy(d, text + selStart, (size_t)selLen * sizeof(wchar_t)); d[selLen] = 0; GlobalUnlock(h); SetClipboardData(CF_UNICODETEXT, h); }
+        CloseClipboard();
+    }
+    IDataObject *dataObj = NULL;
+    if (OleGetClipboard(&dataObj) == S_OK)
+    {
+        DWORD effect = DROPEFFECT_COPY;
+        DoDragDrop(dataObj, &g_dropSource, DROPEFFECT_COPY, &effect);
+        dataObj->lpVtbl->Release(dataObj);
+    }
+    free(text);
+}
+
+static LRESULT CALLBACK OutputSubProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                      UINT_PTR idSubclass, DWORD_PTR refData)
+{
+    switch (msg)
+    {
+    case WM_LBUTTONDOWN:
+        g_dragPending = 1;
+        g_dragStart.x = GET_X_LPARAM(lp);
+        g_dragStart.y = GET_Y_LPARAM(lp);
+        break;
+    case WM_MOUSEMOVE:
+        if ((wp & MK_LBUTTON) && g_dragPending)
+        {
+            int dx = GET_X_LPARAM(lp) - g_dragStart.x;
+            int dy = GET_Y_LPARAM(lp) - g_dragStart.y;
+            int cx = GetSystemMetrics(SM_CXDRAG), cy = GetSystemMetrics(SM_CYDRAG);
+            if (dx > cx || dx < -cx || dy > cy || dy < -cy)
+            {
+                g_dragPending = 0;
+                start_text_drag(hwnd);
+                return 0;
+            }
+        }
+        break;
+    case WM_LBUTTONUP:
+        g_dragPending = 0;
+        break;
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, OutputSubProc, idSubclass);
+        break;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
 static void layout_text(HWND hwnd)
 {
     RECT rc;
@@ -683,6 +773,7 @@ static void create_text_controls(HWND hwnd)
     t_input = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_INPUT, mod, NULL);
     t_split = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 0, 0, px(100), px(4), hwnd, (HMENU)(LONG_PTR)ID_T_SPLIT, mod, NULL);
     t_output = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_OUTPUT, mod, NULL);
+    SetWindowSubclass(t_output, OutputSubProc, 1, 0);
     t_status = CreateWindowExW(0, L"STATIC", S.ready, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(100), px(22), hwnd, (HMENU)(LONG_PTR)ID_T_STATUS, mod, NULL);
 }
 
@@ -1302,6 +1393,7 @@ static void enable_dpi_awareness(void)
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
 {
+    OleInitialize(NULL);
     enable_dpi_awareness();
     load_lang();
 
