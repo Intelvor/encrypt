@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="pageTitle">文本 / 图片 加解密工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0c0e14;
+    --surface: rgba(255,255,255,0.03);
+    --surface-hover: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.08);
+    --border-focus: rgba(120,160,255,0.4);
+    --text: #e2e4ea;
+    --text-dim: #6b7080;
+    --text-muted: #3e4250;
+    --accent: #78a0ff;
+    --accent-glow: rgba(120,160,255,0.15);
+    --green: #4ade80;
+    --green-glow: rgba(74,222,128,0.12);
+    --amber: #fbbf24;
+    --amber-glow: rgba(251,191,36,0.12);
+    --red: #f87171;
+    --red-glow: rgba(248,113,113,0.12);
+    --purple: #a78bfa;
+    --purple-glow: rgba(167,139,250,0.12);
+    --radius: 12px;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --mono: ui-monospace, 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 24px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120,160,255,0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(74,222,128,0.05), transparent);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 960px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  }
+
+  /* ===== Tabs ===== */
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .tab:hover { background: var(--surface-hover); color: var(--text); }
+  .tab.active {
+    background: var(--accent-glow);
+    border-color: rgba(120,160,255,0.4);
+    color: var(--accent);
+  }
+  .tab .tab-sub {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+
+  .lang-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+  }
+  .lang-bar select {
+    background: #1a1d28;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: var(--font);
+    outline: none;
+    cursor: pointer;
+    appearance: auto;
+  }
+  .lang-bar select option {
+    background: #1a1d28;
+    color: var(--text);
+  }
+  .lang-bar select:focus { border-color: var(--border-focus); }
+
+  .tool-panel { display: none; }
+  .tool-panel.active { display: block; }
+
+  /* ===== Header ===== */
+  .header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .header h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.3px; }
+  .badge {
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--accent-glow);
+    border: 1px solid rgba(120,160,255,0.3);
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  /* ===== Fields ===== */
+  .row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .field { display: flex; align-items: center; gap: 8px; }
+  .field label { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+  .field .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+    margin-right: 4px;
+  }
+
+  input[type="text"], input[type="number"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 13px;
+    outline: none;
+    font-family: var(--mono);
+  }
+  input[type="text"]:focus, input[type="number"]:focus { border-color: var(--border-focus); }
+  input[type="number"] { width: 70px; }
+
+  textarea {
+    width: 100%;
+    min-height: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 12px;
+    font-size: 13px;
+    font-family: var(--mono);
+    resize: vertical;
+    outline: none;
+    line-height: 1.6;
+  }
+  textarea:focus { border-color: var(--border-focus); }
+  textarea[readonly] { cursor: default; }
+
+  /* ===== Buttons ===== */
+  .btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+  .btn-group .btn { flex: 1; min-width: 90px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .btn:hover { background: var(--surface-hover); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-primary { background: var(--accent-glow); border-color: rgba(120,160,255,0.4); color: var(--accent); }
+  .btn-primary:hover { background: rgba(120,160,255,0.22); }
+
+  .btn-green { background: var(--green-glow); border-color: rgba(74,222,128,0.4); color: var(--green); }
+  .btn-green:hover { background: rgba(74,222,128,0.2); }
+
+  .btn-amber { background: var(--amber-glow); border-color: rgba(251,191,36,0.4); color: var(--amber); }
+  .btn-amber:hover { background: rgba(251,191,36,0.2); }
+
+  .btn-red { background: var(--red-glow); border-color: rgba(248,113,113,0.4); color: var(--red); }
+  .btn-red:hover { background: rgba(248,113,113,0.2); }
+
+  .btn-swap { background: var(--purple-glow); border-color: rgba(167,139,250,0.4); color: var(--purple); }
+  .btn-swap:hover { background: rgba(167,139,250,0.2); }
+
+  /* ===== Output section (text) ===== */
+  .output-section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .offset-badge {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    display: none;
+  }
+  .offset-badge.show { display: inline-block; }
+  .offset-badge strong { color: var(--accent); }
+
+  /* ===== Image tool ===== */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 12px;
+  }
+  .drop-zone:hover, .drop-zone.over {
+    border-color: var(--border-focus);
+    color: var(--text);
+    background: var(--accent-glow);
+  }
+  .info { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; font-family: var(--mono); }
+  .preview-wrap { margin-bottom: 12px; }
+  .canvas-box {
+    position: relative;
+    width: 100%;
+    max-height: 460px;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    overflow: hidden;
+  }
+  .placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 14px;
+    text-align: center;
+    line-height: 1.6;
+  }
+  canvas {
+    max-width: 100%;
+    max-height: 440px;
+    image-rendering: auto;
+  }
+  .placeholder { color: var(--text-dim); font-size: 14px; text-align: center; padding: 48px 20px; }
+
+  .status {
+    font-size: 13px;
+    color: var(--text-dim);
+    min-height: 20px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 12px;
+  }
+  .status.ok { color: var(--green); border-color: rgba(74,222,128,0.3); }
+  .status.err { color: var(--red); border-color: rgba(248,113,113,0.3); }
+
+  /* ===== Toast ===== */
+  .toast {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-12px);
+    background: rgba(30,32,42,0.95);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ===== 移动端适配 ===== */
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .container { padding: 14px; }
+    .header h1 { font-size: 15px; }
+    .tabs { gap: 4px; margin-bottom: 14px; padding-bottom: 12px; }
+    .tab { padding: 10px 6px; font-size: 13px; }
+    .tab .tab-sub { display: none; }  /* 小屏隐藏副标题 */
+    .row { gap: 8px; margin-bottom: 12px; }
+    .field label { font-size: 12px; }
+    .btn-group { gap: 8px; margin: 12px 0; }
+    .btn-group .btn { min-width: 0; padding: 10px 8px; font-size: 12px; }
+    textarea { min-height: 140px; font-size: 13px; }
+    input[type="text"], input[type="number"] { padding: 8px 8px; font-size: 12px; }
+    /* 覆盖内联 width:180px，让密钥框自适应 */
+    input#key, input#imgKey { width: 140px !important; max-width: 45vw; }
+    .drop-zone { padding: 20px; font-size: 12px; }
+    .canvas-box { max-height: 360px; min-height: 160px; }
+    canvas { max-height: 340px; }
+    .placeholder { padding: 24px 12px; }
+    .info { font-size: 11px; }
+    .status { font-size: 12px; }
+  }
+
+  @media (max-width: 400px) {
+    body { padding: 8px; }
+    .container { padding: 10px; }
+    .tab { font-size: 12px; }
+    .btn-group .btn { flex: 1 1 40%; }  /* 按钮两列排布 */
+    .btn-group { gap: 6px; }
+    input[type="text"] { max-width: 100%; }
+    .field { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="lang-bar">
+    <select id="langSelect">
+      <option value="zh-CN">简体中文</option>
+      <option value="zh-TW">繁體中文</option>
+      <option value="en">English</option>
+    </select>
+  </div>
+
+  <!-- ===== Tab 导航 ===== -->
+  <div class="tabs">
+    <div class="tab active" data-tool="text">
+      <span data-i18n="tabText">文本加解密</span>
+      <span class="tab-sub" data-i18n="tabTextSub">密钥 → 伪随机偏移 → 逐字符移位</span>
+    </div>
+    <div class="tab" data-tool="image">
+      <span data-i18n="tabImage">图片加解密</span>
+      <span class="tab-sub" data-i18n="tabImageSub">密钥 + 轮次 · 像素乱序 + 字节替换</span>
+    </div>
+  </div>
+
+  <!-- ===== 文本工具 ===== -->
+  <div class="tool-panel active" id="panel-text">
+    <div class="header">
+      <h1 data-i18n="textTitle">文本加解密</h1>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1">
+        <label><span class="dot"></span><span data-i18n="key">密钥</span></label>
+        <input type="text" id="key" value="mimo" data-i18n-placeholder="keyPh" placeholder="输入任意字符串作为密钥" style="width:180px">
+        <div class="offset-badge" id="offsetBadge">seed <strong id="offsetVal"></strong></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label><span class="dot"></span><span data-i18n="rounds">轮次</span></label>
+        <input type="number" id="rounds" value="1" min="1" max="99">
+      </div>
+    </div>
+    <div class="field" style="align-items:flex-start">
+      <label style="margin-top:10px"><span class="dot"></span><span data-i18n="inputText">输入文本</span></label>
+      <textarea id="input" data-i18n-placeholder="inputPh" placeholder="在此输入要加密或解密的文本..."></textarea>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="TextApp.doEncrypt()" data-i18n="encrypt">加密</button>
+      <button class="btn btn-green" onclick="TextApp.doDecrypt()" data-i18n="decrypt">解密</button>
+    </div>
+    <div class="output-section">
+      <div class="field" style="align-items:flex-start">
+        <label style="margin-top:10px"><span class="dot"></span><span data-i18n="outputResult">输出结果</span></label>
+        <textarea id="output" readonly data-i18n-placeholder="outputPh" placeholder="结果显示在这里..."></textarea>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-amber" onclick="TextApp.copyResult()" data-i18n="copyResult">复制结果</button>
+        <button class="btn btn-swap" onclick="TextApp.swapToInput()" data-i18n="swapToInput">回填输入</button>
+        <button class="btn btn-red" onclick="TextApp.clearAll()" data-i18n="clear">清空</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 图片工具 ===== -->
+  <div class="tool-panel" id="panel-image">
+    <div class="header">
+      <h1 data-i18n="imageTitle">图片加解密</h1>
+    </div>
+    <div class="drop-zone" id="dropZone" data-i18n="dropZone">点击或拖拽图片到此处（支持 PNG / JPG / BMP）</div>
+    <input type="file" id="fileInput" accept="image/*" style="display:none">
+    <div class="row">
+      <div class="field">
+        <label data-i18n="key">密钥</label>
+        <input type="text" id="imgKey" value="mimo" style="width:180px">
+      </div>
+      <div class="field">
+        <label data-i18n="rounds">轮次</label>
+        <input type="number" id="imgRounds" value="1" min="1" max="99">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="btnEncrypt" disabled data-i18n="encryptImage">加密图片</button>
+      <button class="btn btn-amber" id="btnDecrypt" disabled data-i18n="decryptImage">解密图片</button>
+      <button class="btn btn-green" id="btnSave" disabled data-i18n="savePng">保存 PNG</button>
+      <button class="btn" id="btnReset" data-i18n="clear">清空</button>
+    </div>
+    <div class="info" id="imgInfo" data-i18n="noImage">未加载图片</div>
+    <div class="preview-wrap">
+      <div class="canvas-box">
+        <canvas id="canvas"></canvas>
+        <div class="placeholder" id="placeholder" data-i18n="selectImage">请选择一张图片</div>
+      </div>
+    </div>
+    <div class="status" id="status" data-i18n="ready">就绪</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ================= i18n =================
+const I18N = {
+  'en': {
+    pageTitle: 'Text / Image Encrypt & Decrypt',
+    tabText: 'Text Encrypt',
+    tabTextSub: 'Key \u2192 Pseudo-random offset \u2192 Per-character shift',
+    tabImage: 'Image Encrypt',
+    tabImageSub: 'Key + Rounds \u00b7 Pixel shuffle + Byte XOR',
+    textTitle: 'Text Encrypt & Decrypt',
+    key: 'Key',
+    keyPh: 'Enter any string as key',
+    rounds: 'Rounds',
+    inputText: 'Input Text',
+    inputPh: 'Enter text to encrypt or decrypt...',
+    encrypt: 'Encrypt',
+    decrypt: 'Decrypt',
+    outputResult: 'Output',
+    outputPh: 'Result will appear here...',
+    copyResult: 'Copy Result',
+    swapToInput: 'Swap to Input',
+    clear: 'Clear',
+    imageTitle: 'Image Encrypt & Decrypt',
+    dropZone: 'Click or drag image here (PNG / JPG / BMP)',
+    encryptImage: 'Encrypt Image',
+    decryptImage: 'Decrypt Image',
+    savePng: 'Save PNG',
+    noImage: 'No image loaded',
+    ready: 'Ready',
+    selectImage: 'Please select an image',
+    msgEnterTextEnc: 'Please enter text to encrypt',
+    msgEnterTextDec: 'Please enter text to decrypt',
+    msgEncDone: 'Encryption done ({n} rounds)',
+    msgDecDone: 'Decryption done ({n} rounds)',
+    msgEnterKey: 'Please enter a key',
+    msgNoCopy: 'Nothing to copy',
+    msgCopied: 'Copied to clipboard',
+    msgCopyFail: 'Copy failed, please select text manually',
+    msgCleared: 'Cleared',
+    msgNoSwap: 'Nothing to swap',
+    msgSwapped: 'Swapped to input',
+    msgImgLoaded: 'Image loaded',
+    msgImgLoadFail: 'Image load failed',
+    msgLoadImgFirst: 'Please load an image first',
+    msgEncrypting: 'Encrypting ({n} rounds)...',
+    msgDecrypting: 'Decrypting ({n} rounds)...',
+    msgProcessFail: 'Process failed: ',
+    msgSavedPng: 'Saved as PNG',
+    msgImgInfo: 'Size: {w} \u00d7 {h} px \u00b7 {bytes} bytes'
+  },
+  'zh-CN': {
+    pageTitle: '\u6587\u672c / \u56fe\u7247 \u52a0\u89e3\u5bc6\u5de5\u5177',
+    tabText: '\u6587\u672c\u52a0\u89e3\u5bc6',
+    tabTextSub: '\u5bc6\u94a5 \u2192 \u4f2a\u968f\u673a\u504f\u79fb \u2192 \u9010\u5b57\u7b26\u79fb\u4f4d',
+    tabImage: '\u56fe\u7247\u52a0\u89e3\u5bc6',
+    tabImageSub: '\u5bc6\u94a5 + \u8f6e\u6b21 \u00b7 \u50cf\u7d20\u4e71\u5e8f + \u5b57\u8282\u66ff\u6362',
+    textTitle: '\u6587\u672c\u52a0\u89e3\u5bc6',
+    key: '\u5bc6\u94a5',
+    keyPh: '\u8f93\u5165\u4efb\u610f\u5b57\u7b26\u4e32\u4f5c\u4e3a\u5bc6\u94a5',
+    rounds: '\u8f6e\u6b21',
+    inputText: '\u8f93\u5165\u6587\u672c',
+    inputPh: '\u5728\u6b64\u8f93\u5165\u8981\u52a0\u5bc6\u6216\u89e3\u5bc6\u7684\u6587\u672c...',
+    encrypt: '\u52a0\u5bc6',
+    decrypt: '\u89e3\u5bc6',
+    outputResult: '\u8f93\u51fa\u7ed3\u679c',
+    outputPh: '\u7ed3\u679c\u663e\u793a\u5728\u8fd9\u91cc...',
+    copyResult: '\u590d\u5236\u7ed3\u679c',
+    swapToInput: '\u56de\u586b\u8f93\u5165',
+    clear: '\u6e05\u7a7a',
+    imageTitle: '\u56fe\u7247\u52a0\u89e3\u5bc6',
+    dropZone: '\u70b9\u51fb\u6216\u62d6\u62fd\u56fe\u7247\u5230\u6b64\u5904\uff08\u652f\u6301 PNG / JPG / BMP\uff09',
+    encryptImage: '\u52a0\u5bc6\u56fe\u7247',
+    decryptImage: '\u89e3\u5bc6\u56fe\u7247',
+    savePng: '\u4fdd\u5b58 PNG',
+    noImage: '\u672a\u52a0\u8f7d\u56fe\u7247',
+    ready: '\u5c31\u7eea',
+    selectImage: '\u8bf7\u9009\u62e9\u4e00\u5f20\u56fe\u7247',
+    msgEnterTextEnc: '\u8bf7\u8f93\u5165\u8981\u52a0\u5bc6\u7684\u6587\u672c',
+    msgEnterTextDec: '\u8bf7\u8f93\u5165\u8981\u89e3\u5bc6\u7684\u5bc6\u6587',
+    msgEncDone: '\u52a0\u5bc6\u5b8c\u6210\uff08{n} \u8f6e\uff09',
+    msgDecDone: '\u89e3\u5bc6\u5b8c\u6210\uff08{n} \u8f6e\uff09',
+    msgEnterKey: '\u8bf7\u8f93\u5165\u5bc6\u94a5',
+    msgNoCopy: '\u6ca1\u6709\u53ef\u590d\u5236\u7684\u5185\u5bb9',
+    msgCopied: '\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f',
+    msgCopyFail: '\u590d\u5236\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u9009\u62e9\u6587\u672c\u590d\u5236',
+    msgCleared: '\u5df2\u6e05\u7a7a',
+    msgNoSwap: '\u6ca1\u6709\u53ef\u56de\u586b\u7684\u5185\u5bb9',
+    msgSwapped: '\u5df2\u56de\u586b\u5230\u8f93\u5165\u6846',
+    msgImgLoaded: '\u56fe\u7247\u5df2\u52a0\u8f7d',
+    msgImgLoadFail: '\u56fe\u7247\u52a0\u8f7d\u5931\u8d25',
+    msgLoadImgFirst: '\u8bf7\u5148\u52a0\u8f7d\u56fe\u7247',
+    msgEncrypting: '\u52a0\u5bc6\u4e2d\uff08{n} \u8f6e\uff09...',
+    msgDecrypting: '\u89e3\u5bc6\u4e2d\uff08{n} \u8f6e\uff09...',
+    msgProcessFail: '\u5904\u7406\u5931\u8d25: ',
+    msgSavedPng: '\u5df2\u4fdd\u5b58\u4e3a PNG',
+    msgImgInfo: '\u5c3a\u5bf8: {w} \u00d7 {h} \u50cf\u7d20 \u00b7 {bytes} \u5b57\u8282'
+  },
+  'zh-TW': {
+    pageTitle: '\u6587\u5b57 / \u5716\u7247 \u52a0\u89e3\u5bc6\u5de5\u5177',
+    tabText: '\u6587\u5b57\u52a0\u89e3\u5bc6',
+    tabTextSub: '\u5bc6\u94a5 \u2192 \u507d\u96a8\u6a5f\u504f\u79fb \u2192 \u9010\u5b57\u5143\u79fb\u4f4d',
+    tabImage: '\u5716\u7247\u52a0\u89e3\u5bc6',
+    tabImageSub: '\u5bc6\u94a5 + \u8f2a\u6b21 \u00b7 \u50cf\u7d20\u4e82\u5e8f + \u5b57\u5143\u66ff\u63db',
+    textTitle: '\u6587\u5b57\u52a0\u89e3\u5bc6',
+    key: '\u5bc6\u94a5',
+    keyPh: '\u8f38\u5165\u4efb\u610f\u5b57\u4e32\u4f5c\u70ba\u5bc6\u94a5',
+    rounds: '\u8f2a\u6b21',
+    inputText: '\u8f38\u5165\u6587\u5b57',
+    inputPh: '\u5728\u6b64\u8f38\u5165\u8981\u52a0\u5bc6\u6216\u89e3\u5bc6\u7684\u6587\u5b57...',
+    encrypt: '\u52a0\u5bc6',
+    decrypt: '\u89e3\u5bc6',
+    outputResult: '\u8f38\u51fa\u7d50\u679c',
+    outputPh: '\u7d50\u679c\u986f\u793a\u5728\u9019\u88e1...',
+    copyResult: '\u8907\u88fd\u7d50\u679c',
+    swapToInput: '\u56de\u586b\u8f38\u5165',
+    clear: '\u6e05\u7a7a',
+    imageTitle: '\u5716\u7247\u52a0\u89e3\u5bc6',
+    dropZone: '\u9ede\u64ca\u6216\u62d6\u66f3\u5716\u7247\u5230\u6b64\u8655\uff08\u652f\u63f4 PNG / JPG / BMP\uff09',
+    encryptImage: '\u52a0\u5bc6\u5716\u7247',
+    decryptImage: '\u89e3\u5bc6\u5716\u7247',
+    savePng: '\u5132\u5b58 PNG',
+    noImage: '\u672a\u8f09\u5165\u5716\u7247',
+    ready: '\u5c31\u7dd2',
+    selectImage: '\u8acb\u9078\u64c7\u4e00\u5f35\u5716\u7247',
+    msgEnterTextEnc: '\u8acb\u8f38\u5165\u8981\u52a0\u5bc6\u7684\u6587\u5b57',
+    msgEnterTextDec: '\u8acb\u8f38\u5165\u8981\u89e3\u5bc6\u7684\u5bc6\u6587',
+    msgEncDone: '\u52a0\u5bc6\u5b8c\u6210\uff08{n} \u8f2a\uff09',
+    msgDecDone: '\u89e3\u5bc6\u5b8c\u6210\uff08{n} \u8f2a\uff09',
+    msgEnterKey: '\u8acb\u8f38\u5165\u5bc6\u94a5',
+    msgNoCopy: '\u6c92\u6709\u53ef\u8907\u88fd\u7684\u5167\u5bb9',
+    msgCopied: '\u5df2\u8907\u88fd\u5230\u526a\u8cbc\u7c3f',
+    msgCopyFail: '\u8907\u88fd\u5931\u6557\uff0c\u8acb\u624b\u52d5\u9078\u64c7\u6587\u5b57\u8907\u88fd',
+    msgCleared: '\u5df2\u6e05\u7a7a',
+    msgNoSwap: '\u6c92\u6709\u53ef\u56de\u586b\u7684\u5167\u5bb9',
+    msgSwapped: '\u5df2\u56de\u586b\u5230\u8f38\u5165\u6846',
+    msgImgLoaded: '\u5716\u7247\u5df2\u8f09\u5165',
+    msgImgLoadFail: '\u5716\u7247\u8f09\u5165\u5931\u6557',
+    msgLoadImgFirst: '\u8acb\u5148\u8f09\u5165\u5716\u7247',
+    msgEncrypting: '\u52a0\u5bc6\u4e2d\uff08{n} \u8f2a\uff09...',
+    msgDecrypting: '\u89e3\u5bc6\u4e2d\uff08{n} \u8f2a\uff09...',
+    msgProcessFail: '\u8655\u7406\u5931\u6557: ',
+    msgSavedPng: '\u5df2\u5132\u5b58\u70ba PNG',
+    msgImgInfo: '\u5c3a\u5bf8: {w} \u00d7 {h} \u50cf\u7d20 \u00b7 {bytes} \u4f4d\u5143\u7d44'
+  }
+};
+
+let currentLang = localStorage.getItem('lang') || 'zh-CN';
+
+function t(key, params) {
+  let s = (I18N[currentLang] || I18N['zh-CN'])[key] || key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      s = s.replace('{' + k + '}', v);
+    }
+  }
+  return s;
+}
+
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  document.title = t('pageTitle');
+  document.documentElement.lang = currentLang === 'zh-CN' ? 'zh-CN' : currentLang === 'zh-TW' ? 'zh-TW' : 'en';
+  if (typeof ImageApp !== 'undefined' && ImageApp.rebuildStatus) ImageApp.rebuildStatus();
+}
+
+document.getElementById('langSelect').addEventListener('change', function() {
+  currentLang = this.value;
+  localStorage.setItem('lang', currentLang);
+  applyI18n();
+});
+
+document.getElementById('langSelect').value = currentLang;
+applyI18n();
+
+// ================= Tab 切换 =================
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tool).classList.add('active');
+  });
+});
+
+// ================= Toast（共用） =================
+let toastTimer = null;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+// ================= 文本加解密（IIFE 隔离，避免与图片算法冲突） =================
+const TextApp = (function() {
+  const MOD = 0x110000;
+
+  function isControl(code) {
+    return (code <= 0x1F) || (code >= 0x7F && code <= 0x9F) ||
+           (code >= 0xD800 && code <= 0xDFFF);
+  }
+
+  let SAFE_TOTAL = 0;
+  for (let i = 0; i < MOD; i++) {
+    if (!isControl(i)) SAFE_TOTAL++;
+  }
+
+  const fwdMap = new Uint32Array(SAFE_TOTAL);
+  const revMap = new Int32Array(MOD);
+
+  (function buildMaps() {
+    let safeIdx = 0;
+    for (let code = 0; code < MOD; code++) {
+      if (!isControl(code)) {
+        fwdMap[safeIdx] = code;
+        revMap[code] = safeIdx;
+        safeIdx++;
+      } else {
+        revMap[code] = -1;
+      }
+    }
+  })();
+
+  function hashKey(key) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = (h * 0x01000193) | 0;
+    }
+    return h >>> 0;
+  }
+
+  function makeShift(key, pos) {
+    const seed = hashKey(key);
+    let x = (seed + pos * 0x9E3779B9) | 0;
+    x = (x ^ (x >>> 16)) * 0x45d9f3b | 0;
+    x = (x ^ (x >>> 16)) * 0x45d9f3b | 0;
+    x = x ^ (x >>> 16);
+    return (x >>> 0) % 256;
+  }
+
+  function safeShift(pos, delta) {
+    let p = (pos + delta) % SAFE_TOTAL;
+    if (p < 0) p += SAFE_TOTAL;
+    while (isControl(fwdMap[p])) p = (p + 1) % SAFE_TOTAL;
+    return p;
+  }
+
+  function encrypt(text, key) {
+    let result = '';
+    let cp = 0;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.codePointAt(i);
+      const safePos = revMap[code];
+      if (safePos === -1) {
+        result += String.fromCodePoint(code);
+      } else {
+        const shift = makeShift(key, cp);
+        const newPos = safeShift(safePos, shift);
+        result += String.fromCodePoint(fwdMap[newPos]);
+      }
+      if (code > 0xFFFF) i++;
+      cp++;
+    }
+    return result;
+  }
+
+  function decrypt(cipher, key) {
+    let result = '';
+    let cp = 0;
+    for (let i = 0; i < cipher.length; i++) {
+      const code = cipher.codePointAt(i);
+      const safePos = revMap[code];
+      if (safePos === -1) {
+        result += String.fromCodePoint(code);
+      } else {
+        const shift = makeShift(key, cp);
+        const newPos = safeShift(safePos, -shift);
+        result += String.fromCodePoint(fwdMap[newPos]);
+      }
+      if (code > 0xFFFF) i++;
+      cp++;
+    }
+    return result;
+  }
+
+  function getKeyString() {
+    const k = document.getElementById('key').value;
+    if (!k) throw new Error(t('msgEnterKey'));
+    return k;
+  }
+
+  function doEncrypt() {
+    try {
+      let text = document.getElementById('input').value;
+      const key = getKeyString();
+      const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
+      if (!text) { showToast(t('msgEnterTextEnc')); return; }
+      const t0 = performance.now();
+      for (let r = 0; r < rounds; r++) text = encrypt(text, key);
+      const dt = performance.now() - t0;
+      document.getElementById('output').value = text;
+      const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
+      showToast(t('msgEncDone', {n: rounds}) + ' | ' + timeStr);
+    } catch (e) { alert(e.message); }
+  }
+
+  function doDecrypt() {
+    try {
+      let text = document.getElementById('input').value;
+      const key = getKeyString();
+      const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
+      if (!text) { showToast(t('msgEnterTextDec')); return; }
+      const t0 = performance.now();
+      for (let r = 0; r < rounds; r++) text = decrypt(text, key);
+      const dt = performance.now() - t0;
+      document.getElementById('output').value = text;
+      const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
+      showToast(t('msgDecDone', {n: rounds}) + ' | ' + timeStr);
+    } catch (e) { alert(e.message); }
+  }
+
+  function copyResult() {
+    const output = document.getElementById('output');
+    const text = output.value;
+    if (!text) { showToast(t('msgNoCopy')); return; }
+    const done = () => { output.select(); showToast(t('msgCopied')); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast(t('msgCopied'));
+    } catch (e) {
+      showToast(t('msgCopyFail'));
+    }
+    document.body.removeChild(ta);
+  }
+
+  function clearAll() {
+    document.getElementById('input').value = '';
+    document.getElementById('output').value = '';
+    document.getElementById('input').focus();
+    showToast(t('msgCleared'));
+  }
+
+  function swapToInput() {
+    const output = document.getElementById('output');
+    if (!output.value) { showToast(t('msgNoSwap')); return; }
+    document.getElementById('input').value = output.value;
+    output.value = '';
+    document.getElementById('input').focus();
+    showToast(t('msgSwapped'));
+  }
+
+  document.getElementById('key').addEventListener('input', function() {
+    const badge = document.getElementById('offsetBadge');
+    const val = document.getElementById('offsetVal');
+    const k = this.value;
+    if (!k) { badge.classList.remove('show'); return; }
+    val.textContent = '0x' + hashKey(k).toString(16).toUpperCase().padStart(8, '0');
+    badge.classList.add('show');
+  });
+  (function() {
+    const k = document.getElementById('key').value;
+    if (k) {
+      document.getElementById('offsetVal').textContent = '0x' + hashKey(k).toString(16).toUpperCase().padStart(8, '0');
+      document.getElementById('offsetBadge').classList.add('show');
+    }
+  })();
+
+  return { doEncrypt, doDecrypt, copyResult, swapToInput, clearAll };
+})();
+
+// ================= 图片加解密（IIFE 隔离） =================
+const ImageApp = (function() {
+  const B = 0x9E3779B9;
+
+  function hashKey(key) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = (h * 0x01000193) | 0; }
+    return h >>> 0;
+  }
+
+  function rngNext(st) {
+    let s = st.s;
+    s ^= s << 13; s >>>= 0;
+    s ^= s >>> 17;
+    s ^= s << 5; s >>>= 0;
+    st.s = s;
+    return s >>> 0;
+  }
+
+  function roundTransform(px32, perm, npx, xv, out32, st, enc) {
+    for (let i = 0; i < npx; i++) perm[i] = i;
+    for (let i = npx - 1; i > 0; i--) {
+      const j = rngNext(st) % (i + 1);
+      const t = perm[i]; perm[i] = perm[j]; perm[j] = t;
+    }
+    const nbyte = npx * 4;
+    for (let i = 0; i < nbyte; i++) xv[i] = rngNext(st) & 0xFF;
+
+    if (enc) {
+      for (let i = 0; i < npx; i++) {
+        const v = px32[i], k = (xv[i*4] | xv[i*4+1]<<8 | xv[i*4+2]<<16 | xv[i*4+3]<<24) >>> 0;
+        out32[perm[i]] = (((v ^ k) & 0x00FFFFFF) | (v & 0xFF000000)) >>> 0;
+      }
+    } else {
+      for (let i = 0; i < npx; i++) out32[i] = px32[perm[i]];
+      for (let i = 0; i < npx; i++) {
+        const v = out32[i], k = (xv[i*4] | xv[i*4+1]<<8 | xv[i*4+2]<<16 | xv[i*4+3]<<24) >>> 0;
+        out32[i] = (((v ^ k) & 0x00FFFFFF) | (v & 0xFF000000)) >>> 0;
+      }
+    }
+    px32.set(out32);
+  }
+
+  function encryptImage(px, key, rounds, w, h) {
+    const npx = w * h, nbyte = npx * 4;
+    const px32 = new Uint32Array(px.buffer, px.byteOffset, npx);
+    const perm = new Uint32Array(npx);
+    const xv = new Uint8Array(nbyte);
+    const out32 = new Uint32Array(npx);
+    const seedBase = hashKey(key);
+    const st = { s: 0 };
+    for (let r = 0; r < rounds; r++) {
+      st.s = (seedBase ^ Math.imul(r + 1, B)) >>> 0;
+      roundTransform(px32, perm, npx, xv, out32, st, true);
+    }
+  }
+
+  function decryptImage(px, key, rounds, w, h) {
+    const npx = w * h, nbyte = npx * 4;
+    const px32 = new Uint32Array(px.buffer, px.byteOffset, npx);
+    const perm = new Uint32Array(npx);
+    const xv = new Uint8Array(nbyte);
+    const out32 = new Uint32Array(npx);
+    const seedBase = hashKey(key);
+    const st = { s: 0 };
+    for (let r = rounds - 1; r >= 0; r--) {
+      st.s = (seedBase ^ Math.imul(r + 1, B)) >>> 0;
+      roundTransform(px32, perm, npx, xv, out32, st, false);
+    }
+  }
+
+  const fileInput = document.getElementById('fileInput');
+  const dropZone = document.getElementById('dropZone');
+  const canvas = document.getElementById('canvas');
+  const placeholder = document.getElementById('placeholder');
+  const imgInfo = document.getElementById('imgInfo');
+  const status = document.getElementById('status');
+  const btnEncrypt = document.getElementById('btnEncrypt');
+  const btnDecrypt = document.getElementById('btnDecrypt');
+  const btnSave = document.getElementById('btnSave');
+  const btnReset = document.getElementById('btnReset');
+  const ctx = canvas.getContext('2d');
+
+  let currentW = 0, currentH = 0;
+  let hasImage = false;
+
+  const statusState = { type: 'ready', key: '', params: null, timeStr: '' };
+
+  function saveStatus(type, key, params, timeStr) {
+    statusState.type = type;
+    statusState.key = key || '';
+    statusState.params = params || null;
+    statusState.timeStr = timeStr || '';
+  }
+
+  function rebuildStatus() {
+    let msg = '';
+    const s = statusState;
+    if (s.type === 'imgLoaded') {
+      msg = t('msgImgLoaded') + (s.timeStr ? ' | ' + s.timeStr : '');
+      setStatus(msg, 'ok');
+    } else if (s.type === 'imgOp') {
+      msg = t(s.key, s.params) + (s.timeStr ? ' | ' + s.timeStr : '');
+      setStatus(msg, 'ok');
+    } else if (s.type === 'msg') {
+      setStatus(t(s.key, s.params), s.typeClass || '');
+    } else if (s.type === 'imgInit') {
+      setStatus(t('msgImgInit'));
+    } else {
+      setStatus(t('msgReady'));
+    }
+  }
+
+  function setStatus(msg, type) {
+    status.textContent = msg;
+    status.className = 'status' + (type ? ' ' + type : '');
+  }
+
+  function loadImage(file) {
+    const t0 = performance.now();
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        currentW = img.naturalWidth;
+        currentH = img.naturalHeight;
+        canvas.width = currentW;
+        canvas.height = currentH;
+        ctx.clearRect(0, 0, currentW, currentH);
+        ctx.drawImage(img, 0, 0, currentW, currentH);
+        hasImage = true;
+        placeholder.style.display = 'none';
+        canvas.style.display = 'block';
+        const dt = performance.now() - t0;
+        const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
+        imgInfo.textContent = t('msgImgInfo', {w: currentW, h: currentH, bytes: currentW * currentH * 4});
+        btnEncrypt.disabled = false;
+        btnDecrypt.disabled = false;
+        setStatus(t('msgImgLoaded') + ' | ' + timeStr, 'ok');
+        saveStatus('imgLoaded', '', null, timeStr);
+      };
+      img.onerror = () => { saveStatus('msg', 'msgImgLoadFail', null, ''); setStatus(t('msgImgLoadFail'), 'err'); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) loadImage(f);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) loadImage(fileInput.files[0]);
+  });
+
+  function getKey() {
+    const k = document.getElementById('imgKey').value;
+    if (!k) { saveStatus('msg', 'msgEnterKey', null, ''); setStatus(t('msgEnterKey'), 'err'); return null; }
+    return k;
+  }
+  function getRounds() {
+    return Math.max(1, parseInt(document.getElementById('imgRounds').value, 10) || 1);
+  }
+
+  function transform(enc) {
+    if (!hasImage) { saveStatus('msg', 'msgLoadImgFirst', null, ''); setStatus(t('msgLoadImgFirst'), 'err'); return; }
+    const key = getKey();
+    if (!key) return;
+    const rounds = getRounds();
+    const imgData = ctx.getImageData(0, 0, currentW, currentH);
+    const px = imgData.data;
+    setStatus(enc ? t('msgEncrypting', {n: rounds}) : t('msgDecrypting', {n: rounds}));
+    setTimeout(() => {
+      try {
+        const t0 = performance.now();
+        if (enc) encryptImage(px, key, rounds, currentW, currentH);
+        else decryptImage(px, key, rounds, currentW, currentH);
+        const dt = performance.now() - t0;
+        ctx.putImageData(imgData, 0, 0);
+        btnSave.disabled = false;
+        const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
+        const doneKey = enc ? 'msgEncDone' : 'msgDecDone';
+        setStatus(t(doneKey, {n: rounds}) + ' | ' + timeStr, 'ok');
+        saveStatus('imgOp', doneKey, {n: rounds}, timeStr);
+      } catch (e) {
+        setStatus(t('msgProcessFail') + e.message, 'err');
+      }
+    }, 30);
+  }
+
+  btnEncrypt.addEventListener('click', () => transform(true));
+  btnDecrypt.addEventListener('click', () => transform(false));
+
+  btnSave.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'image_' + Date.now() + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    setStatus(t('msgSavedPng'), 'ok');
+    saveStatus('msg', 'msgSavedPng', null, '');
+  });
+
+  btnReset.addEventListener('click', () => {
+    hasImage = false;
+    currentW = currentH = 0;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.style.display = 'none';
+    placeholder.style.display = 'block';
+    imgInfo.textContent = t('noImage');
+    btnEncrypt.disabled = true;
+    btnDecrypt.disabled = true;
+    btnSave.disabled = true;
+    setStatus(t('msgCleared'));
+    saveStatus('ready', '', null, '');
+    fileInput.value = '';
+  });
+
+  return { rebuildStatus };
+})();
+</script>
+</body>
+</html>
