@@ -942,10 +942,8 @@ var ImageApp = (function() {
       setStatus(msg, 'ok');
     } else if (s.type === 'msg') {
       setStatus(t(s.key, s.params), s.typeClass || '');
-    } else if (s.type === 'imgInit') {
-      setStatus(t('msgImgInit'));
     } else {
-      setStatus(t('msgReady'));
+      setStatus(t('ready'));
     }
   }
 
