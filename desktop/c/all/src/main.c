@@ -235,6 +235,8 @@ static void save_lang(void)
 #define ID_I_STATUS  3007
 #define ID_I_CHKORIG 3008
 #define ID_I_ZOOM    3009
+#define ID_I_COPY    3010
+#define ID_I_CLEAR   3011
 
 // ====== DPI ======
 static int g_dpi = 96;
@@ -260,7 +262,7 @@ static int t_dragging = 0;
 static int t_dragStartY = 0;
 
 // ====== 图片工具 ======
-static HWND i_open, i_enc, i_dec, i_save, i_key, i_round, i_status, i_chk, i_zoom;
+static HWND i_open, i_enc, i_dec, i_save, i_btnCopy, i_btnClear, i_key, i_round, i_status, i_chk, i_zoom;
 static HWND i_lblKey, i_lblRound, i_roundud;
 static HWND i_pic;
 static uint8_t *i_pixels = NULL;
@@ -322,8 +324,8 @@ static HFONT make_font(int h)
 // ====== Tab 切换 ======
 static void show_text_tab(void) { ShowWindow(t_key, SW_SHOW); ShowWindow(t_round, SW_SHOW); ShowWindow(t_roundud, SW_SHOW); ShowWindow(t_input, SW_SHOW); ShowWindow(t_output, SW_SHOW); ShowWindow(t_status, SW_SHOW); ShowWindow(t_split, SW_SHOW); ShowWindow(t_lblKey, SW_SHOW); ShowWindow(t_lblRound, SW_SHOW); ShowWindow(t_lblIn, SW_SHOW); ShowWindow(t_lblOut, SW_SHOW); for (int i = 0; i < 5; i++) ShowWindow(t_btns[i], SW_SHOW); }
 static void hide_text_tab(void) { ShowWindow(t_key, SW_HIDE); ShowWindow(t_round, SW_HIDE); ShowWindow(t_roundud, SW_HIDE); ShowWindow(t_input, SW_HIDE); ShowWindow(t_output, SW_HIDE); ShowWindow(t_status, SW_HIDE); ShowWindow(t_split, SW_HIDE); ShowWindow(t_lblKey, SW_HIDE); ShowWindow(t_lblRound, SW_HIDE); ShowWindow(t_lblIn, SW_HIDE); ShowWindow(t_lblOut, SW_HIDE); for (int i = 0; i < 5; i++) ShowWindow(t_btns[i], SW_HIDE); }
-static void show_image_tab(void) { ShowWindow(i_open, SW_SHOW); ShowWindow(i_enc, SW_SHOW); ShowWindow(i_dec, SW_SHOW); ShowWindow(i_save, SW_SHOW); ShowWindow(i_lblKey, SW_SHOW); ShowWindow(i_key, SW_SHOW); ShowWindow(i_lblRound, SW_SHOW); ShowWindow(i_round, SW_SHOW); ShowWindow(i_roundud, SW_SHOW); ShowWindow(i_status, SW_SHOW); ShowWindow(i_chk, SW_SHOW); ShowWindow(i_zoom, SW_SHOW); ShowWindow(i_pic, SW_SHOW); }
-  static void hide_image_tab(void) { ShowWindow(i_open, SW_HIDE); ShowWindow(i_enc, SW_HIDE); ShowWindow(i_dec, SW_HIDE); ShowWindow(i_save, SW_HIDE); ShowWindow(i_lblKey, SW_HIDE); ShowWindow(i_key, SW_HIDE); ShowWindow(i_lblRound, SW_HIDE); ShowWindow(i_round, SW_HIDE); ShowWindow(i_roundud, SW_HIDE); ShowWindow(i_status, SW_HIDE); ShowWindow(i_chk, SW_HIDE); ShowWindow(i_zoom, SW_HIDE); ShowWindow(i_pic, SW_HIDE); }
+static void show_image_tab(void) { ShowWindow(i_open, SW_SHOW); ShowWindow(i_enc, SW_SHOW); ShowWindow(i_dec, SW_SHOW); ShowWindow(i_save, SW_SHOW); ShowWindow(i_btnCopy, SW_SHOW); ShowWindow(i_btnClear, SW_SHOW); ShowWindow(i_lblKey, SW_SHOW); ShowWindow(i_key, SW_SHOW); ShowWindow(i_lblRound, SW_SHOW); ShowWindow(i_round, SW_SHOW); ShowWindow(i_roundud, SW_SHOW); ShowWindow(i_status, SW_SHOW); ShowWindow(i_chk, SW_SHOW); ShowWindow(i_zoom, SW_SHOW); ShowWindow(i_pic, SW_SHOW); }
+static void hide_image_tab(void) { ShowWindow(i_open, SW_HIDE); ShowWindow(i_enc, SW_HIDE); ShowWindow(i_dec, SW_HIDE); ShowWindow(i_save, SW_HIDE); ShowWindow(i_btnCopy, SW_HIDE); ShowWindow(i_btnClear, SW_HIDE); ShowWindow(i_lblKey, SW_HIDE); ShowWindow(i_key, SW_HIDE); ShowWindow(i_lblRound, SW_HIDE); ShowWindow(i_round, SW_HIDE); ShowWindow(i_roundud, SW_HIDE); ShowWindow(i_status, SW_HIDE); ShowWindow(i_chk, SW_HIDE); ShowWindow(i_zoom, SW_HIDE); ShowWindow(i_pic, SW_HIDE); }
 
 static void switch_tab(int tab)
 {
@@ -686,6 +688,57 @@ static void i_save_file(void)
     free(png);
 }
 
+static void i_copy(void)
+{
+    if (!i_pixels || i_w <= 0 || i_h <= 0) { set_status(S.noCopy); return; }
+    size_t row_bytes = (size_t)i_w * 4;
+    size_t dib_size = sizeof(BITMAPINFOHEADER) + row_bytes * (size_t)i_h;
+    if (!OpenClipboard(g_hwndMain)) { set_status(S.noCopy); return; }
+    EmptyClipboard();
+    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, dib_size);
+    if (!h) { CloseClipboard(); set_status(S.noCopy); return; }
+    BITMAPINFOHEADER *bih = (BITMAPINFOHEADER *)GlobalLock(h);
+    bih->biSize = sizeof(BITMAPINFOHEADER);
+    bih->biWidth = (LONG)i_w;
+    bih->biHeight = -(LONG)i_h;
+    bih->biPlanes = 1;
+    bih->biBitCount = 32;
+    bih->biCompression = BI_RGB;
+    bih->biSizeImage = (DWORD)(row_bytes * (size_t)i_h);
+    uint8_t *dst = (uint8_t *)(bih + 1);
+    const uint8_t *src = i_pixels;
+    for (int y = 0; y < i_h; y++)
+    {
+        const uint8_t *srow = src + (size_t)y * row_bytes;
+        uint8_t *drow = dst + (size_t)y * row_bytes;
+        for (int x = 0; x < i_w; x++)
+        {
+            drow[x*4]   = srow[x*4+2];
+            drow[x*4+1] = srow[x*4+1];
+            drow[x*4+2] = srow[x*4];
+            drow[x*4+3] = srow[x*4+3];
+        }
+    }
+    GlobalUnlock(h);
+    SetClipboardData(CF_DIB, h);
+    CloseClipboard();
+    set_status(S.copied);
+}
+
+static void i_clear(void)
+{
+    free(i_pixels); i_pixels = NULL;
+    free(i_orig); i_orig = NULL;
+    i_w = 0; i_h = 0;
+    i_dirty = 0; i_show_orig = 0;
+    SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
+    EnableWindow(i_enc, FALSE);
+    EnableWindow(i_dec, FALSE);
+    EnableWindow(i_save, FALSE);
+    InvalidateRect(i_pic, NULL, TRUE);
+    set_status(S.cleared);
+}
+
 // ====== 图片工具：绘制预览 ======
 static void i_draw(HWND hwnd, HDC hdc)
 {
@@ -774,7 +827,9 @@ static void layout_image(HWND hwnd)
     MoveWindow(i_open, x, top_y, px(I_BTN_W_OPEN), btn_h, TRUE); x += px(I_BTN_W_OPEN) + gap;
     MoveWindow(i_enc, x, top_y, px(I_BTN_W_MID), btn_h, TRUE); x += px(I_BTN_W_MID) + gap;
     MoveWindow(i_dec, x, top_y, px(I_BTN_W_MID), btn_h, TRUE); x += px(I_BTN_W_MID) + gap;
-    MoveWindow(i_save, x, top_y, px(I_BTN_W_SAVE), btn_h, TRUE); x += px(I_BTN_W_SAVE) + gap * 2;
+    MoveWindow(i_save, x, top_y, px(I_BTN_W_SAVE), btn_h, TRUE); x += px(I_BTN_W_SAVE) + gap;
+    MoveWindow(i_btnCopy, x, top_y, px(I_BTN_W_MID), btn_h, TRUE); x += px(I_BTN_W_MID) + gap;
+    MoveWindow(i_btnClear, x, top_y, px(I_BTN_W_MID), btn_h, TRUE); x += px(I_BTN_W_MID) + gap * 2;
     // 密钥：标签 + 输入框
     MoveWindow(i_lblKey, x, label_top, px(34), ctrl_h, TRUE); x += px(34) + px(4);
     MoveWindow(i_key, x, label_top, px(I_KEY_W), ctrl_h, TRUE); x += px(I_KEY_W) + gap;
@@ -805,6 +860,8 @@ static void create_image_controls(HWND hwnd)
     i_enc = CreateWindowExW(0, L"BUTTON", S.encrypt, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ENC, mod, NULL);
     i_dec = CreateWindowExW(0, L"BUTTON", S.decrypt, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_DEC, mod, NULL);
     i_save = CreateWindowExW(0, L"BUTTON", S.savePng, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_SAVE, mod, NULL);
+    i_btnCopy = CreateWindowExW(0, L"BUTTON", S.copy, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_COPY, mod, NULL);
+    i_btnClear = CreateWindowExW(0, L"BUTTON", S.clear, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_CLEAR, mod, NULL);
     i_lblKey = CreateWindowExW(0, L"STATIC", S.key, WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
     i_key = CreateWindowExW(0, L"EDIT", L"mimo", WS_CHILD | WS_BORDER | ES_AUTOHSCROLL, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_KEY, mod, NULL);
     i_lblRound = CreateWindowExW(0, L"STATIC", S.rounds, WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
@@ -866,6 +923,8 @@ static void apply_font_all(void)
     SendMessageW(i_enc, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(i_dec, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(i_save, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_btnCopy, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(i_btnClear, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(i_lblKey, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(i_key, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(i_lblRound, WM_SETFONT, (WPARAM)g_hFont, TRUE);
@@ -899,6 +958,8 @@ static void apply_lang(void)
     set_text(i_enc, S.encrypt);
     set_text(i_dec, S.decrypt);
     set_text(i_save, S.savePng);
+    set_text(i_btnCopy, S.copy);
+    set_text(i_btnClear, S.clear);
     set_text(i_lblKey, S.key);
     set_text(i_lblRound, S.rounds);
     set_text(i_chk, S.showOrig);
@@ -940,6 +1001,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case ID_I_ENC: i_transform(1); break;
         case ID_I_DEC: i_transform(0); break;
         case ID_I_SAVE: i_save_file(); break;
+        case ID_I_COPY: i_copy(); break;
+        case ID_I_CLEAR: i_clear(); break;
         case ID_I_CHKORIG:
             i_show_orig = (SendMessageW(i_chk, BM_GETCHECK, 0, 0) == BST_CHECKED);
             InvalidateRect(i_pic, NULL, TRUE);
