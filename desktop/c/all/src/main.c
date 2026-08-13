@@ -50,6 +50,7 @@ typedef struct {
     const wchar_t *noCopy;
     const wchar_t *copied;
     const wchar_t *noPaste;
+    const wchar_t *pasted;
     const wchar_t *noSwap;
     const wchar_t *swapped;
     const wchar_t *cleared;
@@ -91,6 +92,7 @@ static const LangStrings g_strings[] = {
         L"\u6ca1\u6709\u53ef\u590d\u5236\u7684\u5185\u5bb9",
         L"\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f",
         L"\u526a\u8d34\u677f\u4e3a\u7a7a\u6216\u4e0d\u662f\u6587\u672c",
+        L"\u5df2\u7c98\u8d34",
         L"\u6ca1\u6709\u53ef\u56de\u586b\u7684\u5185\u5bb9",
         L"\u5df2\u56de\u586b\u5230\u8f93\u5165\u6846",
         L"\u5df2\u6e05\u7a7a",
@@ -130,6 +132,7 @@ static const LangStrings g_strings[] = {
         L"\u6c92\u6709\u53ef\u8907\u88fd\u7684\u5167\u5bb9",
         L"\u5df2\u8907\u88fd\u5230\u526a\u8cbc\u7c3f",
         L"\u526a\u8cbc\u7c3f\u7a7a\u6216\u4e0d\u662f\u6587\u5b57",
+        L"\u5df2\u8cbc\u4e0a",
         L"\u6c92\u6709\u53ef\u56de\u586b\u7684\u5167\u5bb9",
         L"\u5df2\u56de\u586b\u5230\u8f38\u5165\u6846",
         L"\u5df2\u6e05\u7a7a",
@@ -169,6 +172,7 @@ static const LangStrings g_strings[] = {
         L"Nothing to copy",
         L"Copied to clipboard",
         L"Clipboard empty or not text",
+        L"Pasted",
         L"Nothing to swap",
         L"Swapped to input",
         L"Cleared",
@@ -286,7 +290,7 @@ static void set_text(HWND h, const wchar_t *s);
 enum { ST_NONE = 0, ST_READY, ST_TEXT_OP, ST_IMG_INIT, ST_IMG_LOADED, ST_IMG_OP };
 enum { SMSG_NONE = 0, SMSG_ENTER_KEY, SMSG_ENTER_TEXT, SMSG_NO_COPY, SMSG_COPIED,
        SMSG_NO_SWAP, SMSG_SWAPPED, SMSG_CLEARED, SMSG_IMG_NOT_VALID, SMSG_IMG_OPEN_FIRST,
-       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED, SMSG_NO_PASTE };
+       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED, SMSG_NO_PASTE, SMSG_PASTED };
 static struct {
     int type;
     int msg;
@@ -314,6 +318,7 @@ static const wchar_t *smsg_text(int msg)
     case SMSG_IMG_SAVED:      return S.imgSaved;
     case SMSG_IMG_LOADED:     return S.imgLoaded;
     case SMSG_NO_PASTE:       return S.noPaste;
+    case SMSG_PASTED:         return S.pasted;
     default:                  return S.ready;
     }
 }
@@ -541,8 +546,8 @@ static void t_paste(void)
     set_text(t_input, clip);
     GlobalUnlock(h);
     CloseClipboard();
-    g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
-    set_status(S.copied);
+    g_st.type = ST_NONE; g_st.msg = SMSG_PASTED;
+    set_status(S.pasted);
     SetFocus(t_input);
 }
 static void layout_text(HWND hwnd)
@@ -675,7 +680,7 @@ static void create_text_controls(HWND hwnd)
     for (int i = 0; i < 6; i++)
         t_btns[i] = CreateWindowExW(0, L"BUTTON", txts[i], WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, px(T_BTN_W), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ids[i], mod, NULL);
 
-    t_input = CreateWindowExW(WS_EX_CLIENTEDGE | WS_EX_ACCEPTFILES, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_INPUT, mod, NULL);
+    t_input = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_INPUT, mod, NULL);
     t_split = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 0, 0, px(100), px(4), hwnd, (HMENU)(LONG_PTR)ID_T_SPLIT, mod, NULL);
     t_output = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_OUTPUT, mod, NULL);
     t_status = CreateWindowExW(0, L"STATIC", S.ready, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, px(100), px(22), hwnd, (HMENU)(LONG_PTR)ID_T_STATUS, mod, NULL);
