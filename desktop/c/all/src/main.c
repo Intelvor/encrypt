@@ -612,30 +612,44 @@ static LRESULT CALLBACK OutputSubProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     switch (msg)
     {
     case WM_LBUTTONDOWN:
-        g_dragPending = 1;
-        g_dragStart.x = GET_X_LPARAM(lp);
-        g_dragStart.y = GET_Y_LPARAM(lp);
+        {
+            DWORD s0, s1;
+            SendMessageW(hwnd, EM_GETSEL, (WPARAM)&s0, (LPARAM)&s1);
+            if (s0 < s1)
+            {
+                int charPos = (int)SendMessageW(hwnd, EM_CHARFROMPOS, 0, MAKELPARAM(GET_X_LPARAM(lp), GET_Y_LPARAM(lp)));
+                if (charPos >= 0 && (DWORD)LOWORD(charPos) >= s0 && (DWORD)LOWORD(charPos) < s1)
+                {
+                    g_dragPending = 1;
+                    g_dragStart.x = GET_X_LPARAM(lp);
+                    g_dragStart.y = GET_Y_LPARAM(lp);
+                    SetCapture(hwnd);
+                    return 0;
+                }
+            }
+            g_dragPending = 0;
+        }
         break;
     case WM_MOUSEMOVE:
-        if ((wp & MK_LBUTTON) && g_dragPending)
+        if ((wp & MK_LBUTTON) && g_dragPending && GetCapture() == hwnd)
         {
             int dx = GET_X_LPARAM(lp) - g_dragStart.x;
             int dy = GET_Y_LPARAM(lp) - g_dragStart.y;
-            if (dx > 20 || dx < -20 || dy > 20 || dy < -20)
+            if (dx > 10 || dx < -10 || dy > 10 || dy < -10)
             {
-                DWORD s0, s1;
-                SendMessageW(hwnd, EM_GETSEL, (WPARAM)&s0, (LPARAM)&s1);
-                if (s0 < s1)
-                {
-                    g_dragPending = 0;
-                    start_text_drag(hwnd);
-                    return 0;
-                }
+                g_dragPending = 0;
+                ReleaseCapture();
+                start_text_drag(hwnd);
+                return 0;
             }
         }
         break;
     case WM_LBUTTONUP:
-        g_dragPending = 0;
+        if (g_dragPending)
+        {
+            g_dragPending = 0;
+            ReleaseCapture();
+        }
         break;
     case WM_NCDESTROY:
         RemoveWindowSubclass(hwnd, OutputSubProc, idSubclass);
