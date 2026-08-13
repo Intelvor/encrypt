@@ -271,6 +271,92 @@ static int i_w = 0, i_h = 0;
 static int i_dirty = 0;
 static int i_show_orig = 0;
 
+static void set_text(HWND h, const wchar_t *s);
+
+// ====== 状态缓存（语言切换时重建） ======
+enum { ST_NONE = 0, ST_READY, ST_TEXT_OP, ST_IMG_INIT, ST_IMG_LOADED, ST_IMG_OP };
+enum { SMSG_NONE = 0, SMSG_ENTER_KEY, SMSG_ENTER_TEXT, SMSG_NO_COPY, SMSG_COPIED,
+       SMSG_NO_SWAP, SMSG_SWAPPED, SMSG_CLEARED, SMSG_IMG_NOT_VALID, SMSG_IMG_OPEN_FIRST,
+       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED };
+static struct {
+    int type;
+    int msg;
+    int is_enc;
+    int rounds;
+    double ms;
+    int w, h, kb;
+} g_st = { ST_READY, 0, 0, 0, 0, 0, 0, 0 };
+
+static const wchar_t *smsg_text(int msg)
+{
+    switch (msg)
+    {
+    case SMSG_ENTER_KEY:      return S.enterKey;
+    case SMSG_ENTER_TEXT:     return S.enterText;
+    case SMSG_NO_COPY:        return S.noCopy;
+    case SMSG_COPIED:         return S.copied;
+    case SMSG_NO_SWAP:        return S.noSwap;
+    case SMSG_SWAPPED:        return S.swapped;
+    case SMSG_CLEARED:        return S.cleared;
+    case SMSG_IMG_NOT_VALID:  return S.imgNotValid;
+    case SMSG_IMG_OPEN_FIRST: return S.imgOpenFirst;
+    case SMSG_IMG_ENTER_KEY:  return S.imgEnterKey;
+    case SMSG_IMG_SAVE_FAIL:  return S.imgSaveFail;
+    case SMSG_IMG_SAVED:      return S.imgSaved;
+    case SMSG_IMG_LOADED:     return S.imgLoaded;
+    default:                  return S.ready;
+    }
+}
+
+static void rebuild_status(void)
+{
+    HWND target = (g_active_tab == 0) ? t_status : i_status;
+    switch (g_st.type)
+    {
+    case ST_READY:
+        set_text(target, S.ready);
+        break;
+    case ST_TEXT_OP:
+        {
+            wchar_t info[160];
+            const wchar_t *op = g_st.is_enc ? S.encDone : S.decDone;
+            if (g_st.ms < 1000.0)
+                swprintf(info, 160, L"%s (%d %s) | %.0f ms", op, g_st.rounds, S.rounds, g_st.ms);
+            else
+                swprintf(info, 160, L"%s (%d %s) | %.2f s", op, g_st.rounds, S.rounds, g_st.ms / 1000.0);
+            set_text(t_status, info);
+        }
+        break;
+    case ST_IMG_INIT:
+        set_text(i_status, S.imgStatusInit);
+        break;
+    case ST_IMG_LOADED:
+        {
+            wchar_t info[160];
+            if (g_st.ms < 1000.0)
+                swprintf(info, 160, L"%d x %d (%d KB) | %.0f ms", g_st.w, g_st.h, g_st.kb, g_st.ms);
+            else
+                swprintf(info, 160, L"%d x %d (%d KB) | %.2f s", g_st.w, g_st.h, g_st.kb, g_st.ms / 1000.0);
+            set_text(i_status, info);
+        }
+        break;
+    case ST_IMG_OP:
+        {
+            wchar_t info[160];
+            const wchar_t *op = g_st.is_enc ? S.encDone : S.decDone;
+            if (g_st.ms < 1000.0)
+                swprintf(info, 160, L"%s (%d) | %d x %d | %.0f ms", op, g_st.rounds, g_st.w, g_st.h, g_st.ms);
+            else
+                swprintf(info, 160, L"%s (%d) | %d x %d | %.2f s", op, g_st.rounds, g_st.w, g_st.h, g_st.ms / 1000.0);
+            set_text(i_status, info);
+        }
+        break;
+    default:
+        if (g_st.msg) set_text(target, smsg_text(g_st.msg));
+        break;
+    }
+}
+
 // ====== 文本工具：布局逻辑尺寸 ======
 #define T_FONT      12
 #define T_BTN_H     24
@@ -373,9 +459,9 @@ static int t_get_rounds(void)
 static void t_transform(int encrypt)
 {
     wchar_t *key = get_text(t_key);
-    if (!key || !key[0]) { set_status(S.enterKey); free(key); return; }
+    if (!key || !key[0]) { g_st.type = ST_NONE; g_st.msg = SMSG_ENTER_KEY; set_status(S.enterKey); free(key); return; }
     wchar_t *text = get_text(t_input);
-    if (!text || !text[0]) { set_status(S.enterText); free(key); free(text); return; }
+    if (!text || !text[0]) { g_st.type = ST_NONE; g_st.msg = SMSG_ENTER_TEXT; set_status(S.enterText); free(key); free(text); return; }
     int rounds = (int)SendMessageW(t_roundud, UDM_GETPOS, 0, 0);
     if (rounds < 1) rounds = 1;
     LARGE_INTEGER freq, t0, t1;
@@ -392,13 +478,14 @@ static void t_transform(int encrypt)
     else
         swprintf(info, 160, L"%s (%d %s) | %.2f s", encrypt ? S.encDone : S.decDone, rounds, S.rounds, ms / 1000.0);
     set_status(info);
+    g_st.type = ST_TEXT_OP; g_st.msg = SMSG_NONE; g_st.is_enc = encrypt; g_st.rounds = rounds; g_st.ms = ms;
     free(key); free(text); free(result); free(win_text);
 }
 
 static void t_copy(void)
 {
     wchar_t *out = get_text(t_output);
-    if (!out || !out[0]) { set_status(S.noCopy); free(out); return; }
+    if (!out || !out[0]) { g_st.type = ST_NONE; g_st.msg = SMSG_NO_COPY; set_status(S.noCopy); free(out); return; }
     if (OpenClipboard(g_hwndMain))
     {
         EmptyClipboard();
@@ -407,6 +494,7 @@ static void t_copy(void)
         if (h) { wchar_t *d = (wchar_t *)GlobalLock(h); memcpy(d, out, sz); GlobalUnlock(h); SetClipboardData(CF_UNICODETEXT, h); }
         CloseClipboard();
     }
+    g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
     set_status(S.copied);
     free(out);
 }
@@ -414,9 +502,10 @@ static void t_copy(void)
 static void t_swap(void)
 {
     wchar_t *out = get_text(t_output);
-    if (!out || !out[0]) { set_status(S.noSwap); free(out); return; }
+    if (!out || !out[0]) { g_st.type = ST_NONE; g_st.msg = SMSG_NO_SWAP; set_status(S.noSwap); free(out); return; }
     set_text(t_input, out);
     set_text(t_output, L"");
+    g_st.type = ST_NONE; g_st.msg = SMSG_SWAPPED;
     set_status(S.swapped);
     free(out); SetFocus(t_input);
 }
@@ -428,6 +517,7 @@ static void t_clear(void)
     set_text(t_output, L"");
     SendMessageW(t_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
     set_status(S.cleared);
+    g_st.type = ST_READY; g_st.msg = SMSG_NONE;
     SetFocus(t_input);
 }
 
@@ -594,7 +684,7 @@ static int i_load(const wchar_t *path)
     QueryPerformanceCounter(&t0);
     int rc = image_decode_file(path, &w, &h, &px);
     QueryPerformanceCounter(&t1);
-    if (rc != 0) { set_status(S.imgNotValid); return 0; }
+    if (rc != 0) { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_NOT_VALID; set_status(S.imgNotValid); return 0; }
     free(i_pixels); free(i_orig);
     i_pixels = px;
     i_orig = (uint8_t *)malloc((size_t)w * h * 4);
@@ -609,6 +699,8 @@ static int i_load(const wchar_t *path)
     else
         swprintf(info, 160, L"%d x %d (%d KB) | %.2f s", w, h, (int)((size_t)w * h * 4 / 1024), ms / 1000.0);
     set_status(info);
+    g_st.type = ST_IMG_LOADED; g_st.msg = SMSG_NONE;
+    g_st.w = w; g_st.h = h; g_st.kb = (int)((size_t)w * h * 4 / 1024); g_st.ms = ms;
     InvalidateRect(i_pic, NULL, TRUE);
     i_update_zoom();
     EnableWindow(i_enc, TRUE);
@@ -640,9 +732,9 @@ static int i_rounds(void)
 
 static void i_transform(int enc)
 {
-    if (!i_pixels) { set_status(S.imgOpenFirst); return; }
+    if (!i_pixels) { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_OPEN_FIRST; set_status(S.imgOpenFirst); return; }
     wchar_t *key = get_text(i_key);
-    if (!key || !key[0]) { set_status(S.imgEnterKey); free(key); return; }
+    if (!key || !key[0]) { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_ENTER_KEY; set_status(S.imgEnterKey); free(key); return; }
     int rounds = i_rounds();
     LARGE_INTEGER freq, t0, t1;
     QueryPerformanceFrequency(&freq);
@@ -657,6 +749,8 @@ static void i_transform(int enc)
     else
         swprintf(info, 160, L"%s (%d) | %d x %d | %.2f s", enc ? S.encDone : S.decDone, rounds, i_w, i_h, ms / 1000.0);
     set_status(info);
+    g_st.type = ST_IMG_OP; g_st.msg = SMSG_NONE;
+    g_st.is_enc = enc; g_st.rounds = rounds; g_st.ms = ms; g_st.w = i_w; g_st.h = i_h;
     i_dirty = 1; i_show_orig = 0;
     SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
     EnableWindow(i_save, TRUE);
@@ -681,22 +775,22 @@ static void i_save_file(void)
     size_t cap = (size_t)i_w * i_h * 4 * 2 + 4096;
     uint8_t *png = (uint8_t *)malloc(cap);
     size_t plen = png_encode(i_pixels, i_w, i_h, png, cap);
-    if (plen == 0) { set_status(S.imgSaveFail); free(png); return; }
+    if (plen == 0) { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVE_FAIL; set_status(S.imgSaveFail); free(png); return; }
     FILE *f = _wfopen(file, L"wb");
-    if (f) { fwrite(png, 1, plen, f); fclose(f); set_status(S.imgSaved); }
-    else set_status(S.imgSaveFail);
+    if (f) { fwrite(png, 1, plen, f); fclose(f); g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVED; set_status(S.imgSaved); }
+    else { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVE_FAIL; set_status(S.imgSaveFail); }
     free(png);
 }
 
 static void i_copy(void)
 {
-    if (!i_pixels || i_w <= 0 || i_h <= 0) { set_status(S.noCopy); return; }
+    if (!i_pixels || i_w <= 0 || i_h <= 0) { g_st.type = ST_NONE; g_st.msg = SMSG_NO_COPY; set_status(S.noCopy); return; }
     size_t row_bytes = (size_t)i_w * 4;
     size_t dib_size = sizeof(BITMAPINFOHEADER) + row_bytes * (size_t)i_h;
-    if (!OpenClipboard(g_hwndMain)) { set_status(S.noCopy); return; }
+    if (!OpenClipboard(g_hwndMain)) { g_st.type = ST_NONE; g_st.msg = SMSG_NO_COPY; set_status(S.noCopy); return; }
     EmptyClipboard();
     HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, dib_size);
-    if (!h) { CloseClipboard(); set_status(S.noCopy); return; }
+    if (!h) { CloseClipboard(); g_st.type = ST_NONE; g_st.msg = SMSG_NO_COPY; set_status(S.noCopy); return; }
     BITMAPINFOHEADER *bih = (BITMAPINFOHEADER *)GlobalLock(h);
     bih->biSize = sizeof(BITMAPINFOHEADER);
     bih->biWidth = (LONG)i_w;
@@ -722,6 +816,7 @@ static void i_copy(void)
     GlobalUnlock(h);
     SetClipboardData(CF_DIB, h);
     CloseClipboard();
+    g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
     set_status(S.copied);
 }
 
@@ -736,6 +831,7 @@ static void i_clear(void)
     EnableWindow(i_dec, FALSE);
     EnableWindow(i_save, FALSE);
     InvalidateRect(i_pic, NULL, TRUE);
+    g_st.type = ST_IMG_INIT; g_st.msg = SMSG_NONE;
     set_status(S.cleared);
 }
 
@@ -952,8 +1048,7 @@ static void apply_lang(void)
     set_text(t_btns[2], S.copy);
     set_text(t_btns[3], S.swap);
     set_text(t_btns[4], S.clear);
-    if (g_active_tab == 0 && !GetWindowTextLengthW(t_output))
-        set_text(t_status, S.ready);
+    rebuild_status();
 
     set_text(i_open, S.openImage);
     set_text(i_enc, S.encrypt);
@@ -964,8 +1059,6 @@ static void apply_lang(void)
     set_text(i_lblKey, S.key);
     set_text(i_lblRound, S.rounds);
     set_text(i_chk, S.showOrig);
-    if (g_active_tab == 1 && !i_pixels)
-        set_text(i_status, S.imgStatusInit);
 }
 
 // ====== 主窗口过程 ======
@@ -1276,6 +1369,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
             switch_tab(1);
             layout_image(g_hwndMain);
             set_status(S.imgLoaded);
+            g_st.type = ST_IMG_LOADED; g_st.msg = SMSG_NONE;
+            g_st.w = dw; g_st.h = dh; g_st.kb = (int)((size_t)dw * dh * 4 / 1024); g_st.ms = 0;
             InvalidateRect(i_pic, NULL, TRUE);
         }
     }

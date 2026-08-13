@@ -623,6 +623,7 @@ function applyI18n() {
   });
   document.title = t('pageTitle');
   document.documentElement.lang = currentLang === 'zh-CN' ? 'zh-CN' : currentLang === 'zh-TW' ? 'zh-TW' : 'en';
+  if (typeof ImageApp !== 'undefined' && ImageApp.rebuildStatus) ImageApp.rebuildStatus();
 }
 
 document.getElementById('langSelect').addEventListener('change', function() {
@@ -932,6 +933,33 @@ const ImageApp = (function() {
   let currentW = 0, currentH = 0;
   let hasImage = false;
 
+  const statusState = { type: 'ready', key: '', params: null, timeStr: '' };
+
+  function saveStatus(type, key, params, timeStr) {
+    statusState.type = type;
+    statusState.key = key || '';
+    statusState.params = params || null;
+    statusState.timeStr = timeStr || '';
+  }
+
+  function rebuildStatus() {
+    let msg = '';
+    const s = statusState;
+    if (s.type === 'imgLoaded') {
+      msg = t('msgImgLoaded') + (s.timeStr ? ' | ' + s.timeStr : '');
+      setStatus(msg, 'ok');
+    } else if (s.type === 'imgOp') {
+      msg = t(s.key, s.params) + (s.timeStr ? ' | ' + s.timeStr : '');
+      setStatus(msg, 'ok');
+    } else if (s.type === 'msg') {
+      setStatus(t(s.key, s.params), s.typeClass || '');
+    } else if (s.type === 'imgInit') {
+      setStatus(t('msgImgInit'));
+    } else {
+      setStatus(t('msgReady'));
+    }
+  }
+
   function setStatus(msg, type) {
     status.textContent = msg;
     status.className = 'status' + (type ? ' ' + type : '');
@@ -958,8 +986,9 @@ const ImageApp = (function() {
         btnEncrypt.disabled = false;
         btnDecrypt.disabled = false;
         setStatus(t('msgImgLoaded') + ' | ' + timeStr, 'ok');
+        saveStatus('imgLoaded', '', null, timeStr);
       };
-      img.onerror = () => { setStatus(t('msgImgLoadFail'), 'err'); };
+      img.onerror = () => { saveStatus('msg', 'msgImgLoadFail', null, ''); setStatus(t('msgImgLoadFail'), 'err'); };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
@@ -980,7 +1009,7 @@ const ImageApp = (function() {
 
   function getKey() {
     const k = document.getElementById('imgKey').value;
-    if (!k) { setStatus(t('msgEnterKey'), 'err'); return null; }
+    if (!k) { saveStatus('msg', 'msgEnterKey', null, ''); setStatus(t('msgEnterKey'), 'err'); return null; }
     return k;
   }
   function getRounds() {
@@ -988,7 +1017,7 @@ const ImageApp = (function() {
   }
 
   function transform(enc) {
-    if (!hasImage) { setStatus(t('msgLoadImgFirst'), 'err'); return; }
+    if (!hasImage) { saveStatus('msg', 'msgLoadImgFirst', null, ''); setStatus(t('msgLoadImgFirst'), 'err'); return; }
     const key = getKey();
     if (!key) return;
     const rounds = getRounds();
@@ -1004,7 +1033,9 @@ const ImageApp = (function() {
         ctx.putImageData(imgData, 0, 0);
         btnSave.disabled = false;
         const timeStr = dt < 1000 ? Math.round(dt) + ' ms' : (dt / 1000).toFixed(2) + ' s';
-        setStatus((enc ? t('msgEncDone', {n: rounds}) : t('msgDecDone', {n: rounds})) + ' | ' + timeStr, 'ok');
+        const doneKey = enc ? 'msgEncDone' : 'msgDecDone';
+        setStatus(t(doneKey, {n: rounds}) + ' | ' + timeStr, 'ok');
+        saveStatus('imgOp', doneKey, {n: rounds}, timeStr);
       } catch (e) {
         setStatus(t('msgProcessFail') + e.message, 'err');
       }
@@ -1020,6 +1051,7 @@ const ImageApp = (function() {
     link.href = canvas.toDataURL('image/png');
     link.click();
     setStatus(t('msgSavedPng'), 'ok');
+    saveStatus('msg', 'msgSavedPng', null, '');
   });
 
   btnReset.addEventListener('click', () => {
@@ -1033,10 +1065,11 @@ const ImageApp = (function() {
     btnDecrypt.disabled = true;
     btnSave.disabled = true;
     setStatus(t('msgCleared'));
+    saveStatus('ready', '', null, '');
     fileInput.value = '';
   });
 
-  return {};
+  return { rebuildStatus };
 })();
 </script>
 </body>
