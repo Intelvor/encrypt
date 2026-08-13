@@ -952,7 +952,8 @@ static void apply_lang(void)
     set_text(t_btns[2], S.copy);
     set_text(t_btns[3], S.swap);
     set_text(t_btns[4], S.clear);
-    set_text(t_status, S.ready);
+    if (g_active_tab == 0 && !GetWindowTextLengthW(t_output))
+        set_text(t_status, S.ready);
 
     set_text(i_open, S.openImage);
     set_text(i_enc, S.encrypt);
@@ -963,7 +964,8 @@ static void apply_lang(void)
     set_text(i_lblKey, S.key);
     set_text(i_lblRound, S.rounds);
     set_text(i_chk, S.showOrig);
-    set_text(i_status, S.imgStatusInit);
+    if (g_active_tab == 1 && !i_pixels)
+        set_text(i_status, S.imgStatusInit);
 }
 
 // ====== 主窗口过程 ======
