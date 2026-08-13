@@ -848,7 +848,7 @@ const TextApp = (function() {
 })();
 
 // ================= 图片加解密（IIFE 隔离） =================
-const ImageApp = (function() {
+var ImageApp = (function() {
   const B = 0x9E3779B9;
 
   function hashKey(key) {
