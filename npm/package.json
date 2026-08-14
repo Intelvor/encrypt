@@ -1,6 +1,6 @@
 {
   "name": "crypt-lite",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lightweight text + image encrypt/decrypt. Key + rounds. Web, Node and CLI share the exact same algorithm (interop with the encrypt desktop/web/Android tools).",
   "keywords": [
     "encrypt",
@@ -10,10 +10,10 @@
     "obfuscate",
     "lightweight"
   ],
-  "homepage": "https://github.com/jaychouchannel/encrypt",
+  "homepage": "https://github.com/Intelvor/encrypt",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jaychouchannel/encrypt.git"
+    "url": "git+https://github.com/Intelvor/encrypt.git"
   },
   "license": "MIT",
   "author": "jaychouchannel",

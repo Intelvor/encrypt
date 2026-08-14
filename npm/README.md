@@ -3,7 +3,7 @@
 Lightweight **text + image** encrypt/decrypt for Node.js, the browser and the CLI.
 
 Key + rounds obfuscation. The algorithm here is **byte-for-byte identical** to the
-[encrypt](https://github.com/jaychouchannel/encrypt) desktop (C), web and Android
+[encrypt](https://github.com/Intelvor/encrypt) desktop (C), web and Android
 builds, so outputs are fully interoperable across platforms.
 
 > ⚠️ This is **lightweight obfuscation**, not modern cryptography (no KDF / salt /
