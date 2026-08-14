@@ -297,7 +297,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    margin-bottom: 12px;
+    margin-top: 12px;
   }
   .status.ok { color: var(--green); border-color: rgba(74,222,128,0.3); }
   .status.err { color: var(--red); border-color: rgba(248,113,113,0.3); }
@@ -322,6 +322,40 @@
     z-index: 999;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ===== 移动端适配 ===== */
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .container { padding: 14px; }
+    .header h1 { font-size: 15px; }
+    .tabs { gap: 4px; margin-bottom: 14px; padding-bottom: 12px; }
+    .tab { padding: 10px 6px; font-size: 13px; }
+    .tab .tab-sub { display: none; }  /* 小屏隐藏副标题 */
+    .row { gap: 8px; margin-bottom: 12px; }
+    .field label { font-size: 12px; }
+    .btn-group { gap: 8px; margin: 12px 0; }
+    .btn-group .btn { min-width: 0; padding: 10px 8px; font-size: 12px; }
+    textarea { min-height: 140px; font-size: 13px; }
+    input[type="text"], input[type="number"] { padding: 8px 8px; font-size: 12px; }
+    /* 覆盖内联 width:180px，让密钥框自适应 */
+    input#key, input#imgKey { width: 140px !important; max-width: 45vw; }
+    .drop-zone { padding: 20px; font-size: 12px; }
+    .canvas-box { max-height: 360px; min-height: 160px; }
+    canvas { max-height: 340px; }
+    .placeholder { padding: 24px 12px; }
+    .info { font-size: 11px; }
+    .status { font-size: 12px; }
+  }
+
+  @media (max-width: 400px) {
+    body { padding: 8px; }
+    .container { padding: 10px; }
+    .tab { font-size: 12px; }
+    .btn-group .btn { flex: 1 1 40%; }  /* 按钮两列排布 */
+    .btn-group { gap: 6px; }
+    input[type="text"] { max-width: 100%; }
+    .field { flex-wrap: wrap; }
+  }
 
   @media (max-width: 480px) {
     body { padding: 16px; }
@@ -417,13 +451,13 @@
       <button class="btn" id="btnReset" data-i18n="clear">清空</button>
     </div>
     <div class="info" id="imgInfo" data-i18n="noImage">未加载图片</div>
-    <div class="status" id="status" data-i18n="ready">就绪</div>
     <div class="preview-wrap">
       <div class="canvas-box">
         <canvas id="canvas"></canvas>
         <div class="placeholder" id="placeholder" data-i18n="selectImage">请选择一张图片</div>
       </div>
     </div>
+    <div class="status" id="status" data-i18n="ready">就绪</div>
   </div>
 </div>
 
@@ -1052,6 +1086,7 @@ var ImageApp = (function() {
       try {
         const dataUrl = canvas.toDataURL('image/png');
         const filename = 'encrypt_' + Date.now() + '.png';
+        // Android：优先通过原生桥保存到相册；其他平台回退到浏览器下载
         if (window.AndroidBridge && typeof window.AndroidBridge.saveImage === 'function') {
           try {
             const ok = window.AndroidBridge.saveImage(dataUrl, filename);
@@ -1124,6 +1159,7 @@ var ImageApp = (function() {
   return { loadDataUrl, rebuildStatus };
 })();
 
+// Android 壳页面加载完成后调用：切换到图片页并加载外部图片（web 版无 AndroidBridge，此钩子闲置）
 window.loadExternalImage = function(dataUrl) {
   const tab = document.querySelector('.tab[data-tool="image"]');
   if (tab) tab.click();

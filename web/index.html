@@ -356,6 +356,13 @@
     input[type="text"] { max-width: 100%; }
     .field { flex-wrap: wrap; }
   }
+
+  @media (max-width: 480px) {
+    body { padding: 16px; }
+    .container { padding: 16px; }
+    .header h1 { font-size: 15px; }
+    .btn-group .btn { min-width: 70px; }
+  }
 </style>
 </head>
 <body>
@@ -504,7 +511,12 @@ const I18N = {
     msgDecrypting: 'Decrypting ({n} rounds)...',
     msgProcessFail: 'Process failed: ',
     msgSavedPng: 'Saved as PNG',
-    msgImgInfo: 'Size: {w} \u00d7 {h} px \u00b7 {bytes} bytes'
+    msgImgInfo: 'Size: {w} \u00d7 {h} px \u00b7 {bytes} bytes',
+    msgProcessing: 'Processing, please wait...',
+    msgSaving: 'Saving...',
+    msgSavedAlbum: 'Saved to album',
+    msgSaveFail: 'Save failed: ',
+    msgOpenedExt: 'Opened external image'
   },
   'zh-CN': {
     pageTitle: '\u6587\u672c / \u56fe\u7247 \u52a0\u89e3\u5bc6\u5de5\u5177',
@@ -551,7 +563,12 @@ const I18N = {
     msgDecrypting: '\u89e3\u5bc6\u4e2d\uff08{n} \u8f6e\uff09...',
     msgProcessFail: '\u5904\u7406\u5931\u8d25: ',
     msgSavedPng: '\u5df2\u4fdd\u5b58\u4e3a PNG',
-    msgImgInfo: '\u5c3a\u5bf8: {w} \u00d7 {h} \u50cf\u7d20 \u00b7 {bytes} \u5b57\u8282'
+    msgImgInfo: '\u5c3a\u5bf8: {w} \u00d7 {h} \u50cf\u7d20 \u00b7 {bytes} \u5b57\u8282',
+    msgProcessing: '\u6b63\u5728\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u5019...',
+    msgSaving: '\u4fdd\u5b58\u4e2d...',
+    msgSavedAlbum: '\u5df2\u4fdd\u5b58\u5230\u76f8\u518c',
+    msgSaveFail: '\u4fdd\u5b58\u5931\u8d25: ',
+    msgOpenedExt: '\u5df2\u4ece\u5916\u90e8\u6253\u5f00\u56fe\u7247'
   },
   'zh-TW': {
     pageTitle: '\u6587\u5b57 / \u5716\u7247 \u52a0\u89e3\u5bc6\u5de5\u5177',
@@ -598,7 +615,12 @@ const I18N = {
     msgDecrypting: '\u89e3\u5bc6\u4e2d\uff08{n} \u8f2a\uff09...',
     msgProcessFail: '\u8655\u7406\u5931\u6557: ',
     msgSavedPng: '\u5df2\u5132\u5b58\u70ba PNG',
-    msgImgInfo: '\u5c3a\u5bf8: {w} \u00d7 {h} \u50cf\u7d20 \u00b7 {bytes} \u4f4d\u5143\u7d44'
+    msgImgInfo: '\u5c3a\u5bf8: {w} \u00d7 {h} \u50cf\u7d20 \u00b7 {bytes} \u4f4d\u5143\u7d44',
+    msgProcessing: '\u6b63\u5728\u8655\u7406\u4e2d\uff0c\u8acb\u7a0d\u5019...',
+    msgSaving: '\u5132\u5b58\u4e2d...',
+    msgSavedAlbum: '\u5df2\u5132\u5b58\u5230\u76f8\u7c3f',
+    msgSaveFail: '\u5132\u5b58\u5931\u6557: ',
+    msgOpenedExt: '\u5df2\u5f9e\u5916\u90e8\u958b\u555f\u5716\u7247'
   }
 };
 
@@ -932,6 +954,7 @@ var ImageApp = (function() {
 
   let currentW = 0, currentH = 0;
   let hasImage = false;
+  let processing = false;
 
   const statusState = { type: 'ready', key: '', params: null, timeStr: '' };
 
@@ -1015,12 +1038,17 @@ var ImageApp = (function() {
   }
 
   function transform(enc) {
+    if (processing) { saveStatus('msg', 'msgProcessing', null, ''); setStatus(t('msgProcessing')); return; }
     if (!hasImage) { saveStatus('msg', 'msgLoadImgFirst', null, ''); setStatus(t('msgLoadImgFirst'), 'err'); return; }
     const key = getKey();
     if (!key) return;
     const rounds = getRounds();
     const imgData = ctx.getImageData(0, 0, currentW, currentH);
     const px = imgData.data;
+    processing = true;
+    btnEncrypt.disabled = true;
+    btnDecrypt.disabled = true;
+    btnSave.disabled = true;
     setStatus(enc ? t('msgEncrypting', {n: rounds}) : t('msgDecrypting', {n: rounds}));
     setTimeout(() => {
       try {
@@ -1037,6 +1065,9 @@ var ImageApp = (function() {
       } catch (e) {
         setStatus(t('msgProcessFail') + e.message, 'err');
       }
+      processing = false;
+      btnEncrypt.disabled = false;
+      btnDecrypt.disabled = false;
     }, 30);
   }
 
@@ -1044,12 +1075,41 @@ var ImageApp = (function() {
   btnDecrypt.addEventListener('click', () => transform(false));
 
   btnSave.addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.download = 'image_' + Date.now() + '.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-    setStatus(t('msgSavedPng'), 'ok');
-    saveStatus('msg', 'msgSavedPng', null, '');
+    if (processing) { setStatus(t('msgProcessing')); return; }
+    processing = true;
+    btnEncrypt.disabled = true;
+    btnDecrypt.disabled = true;
+    btnSave.disabled = true;
+    setStatus(t('msgSaving'));
+    setTimeout(() => {
+      let saved = false;
+      try {
+        const dataUrl = canvas.toDataURL('image/png');
+        const filename = 'encrypt_' + Date.now() + '.png';
+        // Android：优先通过原生桥保存到相册；其他平台回退到浏览器下载
+        if (window.AndroidBridge && typeof window.AndroidBridge.saveImage === 'function') {
+          try {
+            const ok = window.AndroidBridge.saveImage(dataUrl, filename);
+            if (ok) { setStatus(t('msgSavedAlbum'), 'ok'); saveStatus('msg', 'msgSavedAlbum', null, ''); saved = true; }
+          } catch (e) { }
+        }
+        if (!saved) {
+          const link = document.createElement('a');
+          link.download = filename;
+          link.href = dataUrl;
+          link.click();
+          setStatus(t('msgSavedPng'), 'ok');
+          saveStatus('msg', 'msgSavedPng', null, '');
+        }
+      } catch (e) {
+        setStatus(t('msgSaveFail') + e.message, 'err');
+        saveStatus('msg', 'msgSaveFail', null, '');
+      }
+      processing = false;
+      btnEncrypt.disabled = false;
+      btnDecrypt.disabled = false;
+      btnSave.disabled = false;
+    }, 30);
   });
 
   btnReset.addEventListener('click', () => {
@@ -1067,8 +1127,49 @@ var ImageApp = (function() {
     fileInput.value = '';
   });
 
-  return { rebuildStatus };
+  function loadDataUrl(dataUrl) {
+    const img = new Image();
+    img.onload = () => {
+      currentW = img.naturalWidth;
+      currentH = img.naturalHeight;
+      canvas.width = currentW;
+      canvas.height = currentH;
+      ctx.clearRect(0, 0, currentW, currentH);
+      ctx.drawImage(img, 0, 0, currentW, currentH);
+      hasImage = true;
+      placeholder.style.display = 'none';
+      canvas.style.display = 'block';
+      imgInfo.textContent = t('msgImgInfo', {w: currentW, h: currentH, bytes: currentW * currentH * 4});
+      btnEncrypt.disabled = false;
+      btnDecrypt.disabled = false;
+      setStatus(t('msgOpenedExt'), 'ok');
+    };
+    img.onerror = () => { setStatus(t('msgImgLoadFail'), 'err'); };
+    img.src = dataUrl;
+  }
+
+  (function() {
+    const pending = localStorage.getItem('pendingImage');
+    if (pending) {
+      loadDataUrl(pending);
+      localStorage.removeItem('pendingImage');
+    }
+  })();
+
+  return { loadDataUrl, rebuildStatus };
 })();
+
+// Android 壳页面加载完成后调用：切换到图片页并加载外部图片（web 版无 AndroidBridge，此钩子闲置）
+window.loadExternalImage = function(dataUrl) {
+  const tab = document.querySelector('.tab[data-tool="image"]');
+  if (tab) tab.click();
+  setTimeout(() => {
+    const imageApp = window.ImageApp;
+    if (imageApp && typeof imageApp.loadDataUrl === 'function') {
+      imageApp.loadDataUrl(dataUrl);
+    }
+  }, 50);
+};
 </script>
 </body>
 </html>

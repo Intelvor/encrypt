@@ -18,7 +18,8 @@ set ZALIGN=%BT%\zipalign.exe
 set APKSIGNER=%BT%\apksigner.bat
 rem keystore stored outside repo (user .android dir) so it is never lost
 set KEYSTORE=%USERPROFILE%\.android\encrypt.keystore
-set KEYSTORE_PASS=encrypt123
+rem override with env KEYSTORE_PASS if set (e.g. CI)
+if not defined KEYSTORE_PASS set KEYSTORE_PASS=encrypt123
 set MIN_SDK=24
 set TARGET_SDK=34
 set VERSION_CODE=3
@@ -37,6 +38,10 @@ if not exist "%KEYSTORE%" (
     echo         -dname "CN=TextEncrypt,OU=Local,O=Local,C=CN" -keystore "%KEYSTORE%"
     exit /b 1
 )
+
+rem page sync: web/index.html is the single source for web & Android; refresh asset before packaging
+copy /Y "%APP%..\web\index.html" "%ASSETS%\index.html" >nul
+if errorlevel 1 goto fail
 
 if exist "%OUT%\classes" rd /s /q "%OUT%\classes"
 if exist "%OUT%\dexout" rd /s /q "%OUT%\dexout"
