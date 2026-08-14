@@ -78,6 +78,20 @@ crypt-lite image decrypt -k secret -r 4 -i out.png -o dec.png
 - **Image**: each round = pixel permutation (Fisher–Yates) + byte XOR (RGB only,
   alpha preserved), seeded by `keyHash ⊕ round·0x9E3779B9`.
 
+## Distribution: npm vs GitHub Packages
+
+The same code is published to **two** registries under two names:
+
+| Registry | Package name | Install |
+|----------|--------------|---------|
+| npm (public) | `crypt-lite` | `npm i crypt-lite` |
+| GitHub Packages | `@Intelvor/crypt-lite` | `npm i @Intelvor/crypt-lite` |
+
+Both resolve to the identical algorithm — they are just two release channels for
+the same code. GitHub Packages requires an auth token for install (your
+`GITHUB_TOKEN` / a PAT with `read:packages`), so for everyday use the public npm
+package `crypt-lite` is simpler.
+
 ## License
 
 MIT

@@ -1,0 +1,46 @@
+name: Publish npm package
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'npm/**'
+      - '.github/workflows/publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ---- 1. Publish to public npm (crypt-lite) ----
+      - name: Publish to npmjs.com
+        if: env.NPM_TOKEN != ''
+        working-directory: npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "registry=https://registry.npmjs.org/" > .npmrc
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> .npmrc
+          npm publish --access public
+
+      # ---- 2. Publish to GitHub Packages (@Intelvor/crypt-lite) ----
+      - name: Publish to GitHub Packages
+        working-directory: npm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Rewrite the name to the scoped form for GitHub Packages only.
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.name='@Intelvor/crypt-lite';p.publishConfig={registry:'https://npm.pkg.github.com'};fs.writeFileSync('package.json',JSON.stringify(p,null,2));"
+          echo "registry=https://npm.pkg.github.com/" > .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> .npmrc
+          npm publish --access public
