@@ -26,10 +26,6 @@ android/build/*.keystore
 # ===== Android SDK 工具压缩包 =====
 *.zip
 
-# ===== cuix 重构版（实验性，未随主仓库分发）=====
-# 构建产物与第三方源码（quickjs 等）不入库；源码在 core-ui 独立仓库
-desktop/cuix/build/
-
 # ===== 临时文件 =====
 *.tmp
 *.log

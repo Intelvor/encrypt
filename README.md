@@ -21,8 +21,7 @@ encrypt/
 ├── web/                   # 网页版（浏览器打开即用）
 │   └── index.html         # 单一源页面：文本 + 图片（含 Android 平台特性检测）
 ├── desktop/
-│   ├── c/all/             # 桌面版（C, Win32 GUI）：文本 + 图片
-│   └── cuix/              # 实验性重构版（core-ui .uix，需独立 core-ui 仓库，未随主仓库分发）
+│   └── c/all/             # 桌面版（C, Win32 GUI）：文本 + 图片
 ├── android/               # Android 版（WebView 壳）
 │   ├── app/               # 应用源码（Java + assets + res）
 │   ├── sdk/               # 本地 Android SDK（gitignore，需自行放置）
