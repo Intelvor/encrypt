@@ -1,0 +1,39 @@
+{
+  "name": "crypt-lite",
+  "version": "1.0.0",
+  "description": "Lightweight text + image encrypt/decrypt. Key + rounds. Web, Node and CLI share the exact same algorithm (interop with the encrypt desktop/web/Android tools).",
+  "keywords": [
+    "encrypt",
+    "decrypt",
+    "image",
+    "text",
+    "obfuscate",
+    "lightweight"
+  ],
+  "homepage": "https://github.com/jaychouchannel/encrypt",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaychouchannel/encrypt.git"
+  },
+  "license": "MIT",
+  "author": "jaychouchannel",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "bin": {
+    "crypt-lite": "bin/cli.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md"
+  ],
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "scripts": {
+    "test": "node test/index.test.js"
+  }
+}
