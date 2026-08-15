@@ -1,12 +1,9 @@
-// png.c - PNG 编码（GDI+，带 deflate 压缩）
+// png.c - PNG 编码（GDI+，带 deflate 压缩，兼容 Win XP）
 #include "png.h"
 #include <windows.h>
 #include <objidl.h>
 #include <stdlib.h>
 #include <string.h>
-
-static const GUID my_IID_IUnknown = {0x00000000,0x0000,0x0000,{0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46}};
-static const GUID my_IID_IStream = {0x0000000C,0x0000,0x0000,{0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46}};
 
 // GDI+ flat API
 #if defined(_WIN64)
@@ -27,7 +24,6 @@ __declspec(dllimport) Status WINAPI GdipSaveImageToStream(void*, IStream*, const
 
 #define PixelFormat32bppARGB 0x0026200A
 #define ImageLockModeWrite 0x00000002
-#define ImageLockModeRead 0x00000001
 
 typedef struct {
     unsigned int Width;
@@ -45,118 +41,52 @@ typedef struct {
     int SuppressExternalCodecs;
 } GdiplusStartupInputT;
 
-// IStream vtable (MinGW objidl.h 可能不完整，手写保证兼容)
-typedef struct {
-    IStreamVtbl *lpVtbl;
-    LONG ref;
-    uint8_t *buf;
-    size_t cap;
-    size_t pos;
-    size_t used;
-} MemStream;
-
-static HRESULT STDMETHODCALLTYPE ms_QueryInterface(IStream *This, REFIID riid, void **ppv)
-{
-    if (!memcmp(riid, &my_IID_IUnknown, sizeof(*riid)) || !memcmp(riid, &my_IID_IStream, sizeof(*riid)))
-    { *ppv = This; This->lpVtbl->AddRef(This); return S_OK; }
-    *ppv = NULL; return E_NOINTERFACE;
-}
-
-static ULONG STDMETHODCALLTYPE ms_AddRef(IStream *This) { return ++((MemStream*)This)->ref; }
-static ULONG STDMETHODCALLTYPE ms_Release(IStream *This) { return --((MemStream*)This)->ref; }
-
-static HRESULT STDMETHODCALLTYPE ms_Read(IStream *This, void *pv, ULONG cb, ULONG *pcbRead)
-{
-    MemStream *s = (MemStream*)This;
-    ULONG avail = (ULONG)(s->used > s->pos ? s->used - s->pos : 0);
-    ULONG n = cb < avail ? cb : avail;
-    memcpy(pv, s->buf + s->pos, n);
-    s->pos += n;
-    if (pcbRead) *pcbRead = n;
-    return S_OK;
-}
-
-static HRESULT STDMETHODCALLTYPE ms_Write(IStream *This, const void *pv, ULONG cb, ULONG *pcbWritten)
-{
-    MemStream *s = (MemStream*)This;
-    if (s->pos + cb > s->cap)
-    {
-        size_t nc = (s->pos + cb) * 2;
-        uint8_t *nb = (uint8_t *)realloc(s->buf, nc);
-        if (!nb) { if (pcbWritten) *pcbWritten = 0; return E_OUTOFMEMORY; }
-        s->buf = nb; s->cap = nc;
-    }
-    memcpy(s->buf + s->pos, pv, cb);
-    s->pos += cb;
-    if (s->pos > s->used) s->used = s->pos;
-    if (pcbWritten) *pcbWritten = cb;
-    return S_OK;
-}
-
-static HRESULT STDMETHODCALLTYPE ms_Seek(IStream *This, LARGE_INTEGER dlibMove, DWORD dwOrigin, ULARGE_INTEGER *plibNewPosition)
-{
-    MemStream *s = (MemStream*)This;
-    LONGLONG np;
-    if (dwOrigin == STREAM_SEEK_SET) np = dlibMove.QuadPart;
-    else if (dwOrigin == STREAM_SEEK_CUR) np = (LONGLONG)s->pos + dlibMove.QuadPart;
-    else np = (LONGLONG)s->used + dlibMove.QuadPart;
-    if (np < 0) np = 0;
-    s->pos = (size_t)np;
-    if (plibNewPosition) { plibNewPosition->QuadPart = (ULONGLONG)np; }
-    return S_OK;
-}
-
-static HRESULT STDMETHODCALLTYPE ms_SetSize(IStream *This, ULARGE_INTEGER libNewSize)
-{
-    MemStream *s = (MemStream*)This;
-    size_t ns = (size_t)libNewSize.QuadPart;
-    if (ns > s->cap)
-    {
-        uint8_t *nb = (uint8_t *)realloc(s->buf, ns);
-        if (!nb) return E_OUTOFMEMORY;
-        s->buf = nb; s->cap = ns;
-    }
-    if (ns < s->used) s->used = ns;
-    return S_OK;
-}
-
-static HRESULT STDMETHODCALLTYPE ms_CopyTo(IStream *This, IStream *pstm, ULARGE_INTEGER cb, ULARGE_INTEGER *pcbRead, ULARGE_INTEGER *pcbWritten) { return E_NOTIMPL; }
-static HRESULT STDMETHODCALLTYPE ms_Commit(IStream *This, DWORD grfCommitFlags) { return S_OK; }
-static HRESULT STDMETHODCALLTYPE ms_Revert(IStream *This) { return E_NOTIMPL; }
-static HRESULT STDMETHODCALLTYPE ms_LockRegion(IStream *This, ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType) { return E_NOTIMPL; }
-static HRESULT STDMETHODCALLTYPE ms_UnlockRegion(IStream *This, ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType) { return E_NOTIMPL; }
-static HRESULT STDMETHODCALLTYPE ms_Stat(IStream *This, STATSTG *pstatstg, DWORD grfStatFlag)
-{
-    memset(pstatstg, 0, sizeof(*pstatstg));
-    pstatstg->cbSize.QuadPart = (ULONGLONG)((MemStream*)This)->used;
-    return S_OK;
-}
-static HRESULT STDMETHODCALLTYPE ms_Clone(IStream *This, IStream **ppstm) { *ppstm = NULL; return E_NOTIMPL; }
-
-static IStreamVtbl g_memStreamVtbl = {
-    ms_QueryInterface, ms_AddRef, ms_Release,
-    ms_Read, ms_Write, ms_Seek, ms_SetSize,
-    ms_CopyTo, ms_Commit, ms_Revert,
-    ms_LockRegion, ms_UnlockRegion, ms_Stat, ms_Clone
-};
-
 static const CLSID g_pngClsid = {0x557CF406,0x1A04,0x11D3,{0x9A,0x73,0x00,0x00,0xF8,0x1E,0xF3,0x2E}};
+
+static ULONG_PTR g_gdiplus_token = 0;
+static int g_gdiplus_ok = 0;
+
+static void gdiplus_ensure(void)
+{
+    if (g_gdiplus_ok) return;
+    GdiplusStartupInputT gdi_input = { 1, NULL, 0, 0 };
+    if (GdiplusStartup(&g_gdiplus_token, &gdi_input, NULL) == 0)
+        g_gdiplus_ok = 1;
+}
+
+// 从 IStream 读取全部字节到 malloc 的缓冲区，返回长度
+static size_t stream_to_mem(IStream *stm, uint8_t **out_buf)
+{
+    STATSTG stat;
+    if (stm->lpVtbl->Stat(stm, &stat, STATFLAG_NONAME) != S_OK) return 0;
+    size_t len = (size_t)stat.cbSize.QuadPart;
+    if (len == 0) return 0;
+    uint8_t *buf = (uint8_t *)malloc(len);
+    if (!buf) return 0;
+    LARGE_INTEGER zero;
+    zero.QuadPart = 0;
+    stm->lpVtbl->Seek(stm, zero, STREAM_SEEK_SET, NULL);
+    ULONG read = 0;
+    HRESULT hr = stm->lpVtbl->Read(stm, buf, (ULONG)len, &read);
+    if (hr != S_OK || read != len) { free(buf); return 0; }
+    *out_buf = buf;
+    return len;
+}
 
 size_t png_encode(const uint8_t *pixels, int width, int height, uint8_t *out, size_t out_cap)
 {
-    GdiplusStartupInputT gdi_input = { 1, NULL, 0, 0 };
-    ULONG_PTR token = 0;
-    if (GdiplusStartup(&token, &gdi_input, NULL) != 0) return 0;
+    gdiplus_ensure();
+    if (!g_gdiplus_ok) return 0;
 
     void *bitmap = NULL;
     if (GdipCreateBitmapFromScan0(width, height, 0, PixelFormat32bppARGB, NULL, &bitmap) != 0 || !bitmap)
-    { GdiplusShutdown(token); return 0; }
+        return 0;
 
     GpRectT rect = { 0, 0, width, height };
     GpBitmapDataT bmpdata;
     memset(&bmpdata, 0, sizeof(bmpdata));
     if (GdipBitmapLockBits(bitmap, &rect, ImageLockModeWrite, PixelFormat32bppARGB, &bmpdata) != 0)
-    { GdipDisposeImage(bitmap); GdiplusShutdown(token); return 0; }
+    { GdipDisposeImage(bitmap); return 0; }
 
     int src_row = width * 4;
     for (int y = 0; y < height; y++)
@@ -165,32 +95,33 @@ size_t png_encode(const uint8_t *pixels, int width, int height, uint8_t *out, si
         const uint8_t *src_row_ptr = pixels + (size_t)y * src_row;
         for (int x = 0; x < width; x++)
         {
-            dst_row[x*4]   = src_row_ptr[x*4+2]; // B <- R
-            dst_row[x*4+1] = src_row_ptr[x*4+1]; // G
-            dst_row[x*4+2] = src_row_ptr[x*4];   // R <- B
-            dst_row[x*4+3] = src_row_ptr[x*4+3]; // A
+            dst_row[x*4]   = src_row_ptr[x*4+2];
+            dst_row[x*4+1] = src_row_ptr[x*4+1];
+            dst_row[x*4+2] = src_row_ptr[x*4];
+            dst_row[x*4+3] = src_row_ptr[x*4+3];
         }
     }
     GdipBitmapUnlockBits(bitmap, &bmpdata);
 
-    MemStream ms;
-    ms.lpVtbl = &g_memStreamVtbl;
-    ms.ref = 1;
-    ms.cap = (size_t)width * height + 4096;
-    ms.buf = (uint8_t *)malloc(ms.cap);
-    ms.pos = 0;
-    ms.used = 0;
-    if (!ms.buf) { GdipDisposeImage(bitmap); GdiplusShutdown(token); return 0; }
+    // 用系统 COM 创建 IStream（XP 兼容）
+    IStream *stm = NULL;
+    if (CreateStreamOnHGlobal(NULL, TRUE, &stm) != S_OK || !stm)
+    { GdipDisposeImage(bitmap); return 0; }
 
     size_t result = 0;
-    if (GdipSaveImageToStream(bitmap, (IStream*)&ms, &g_pngClsid, NULL) == 0 && ms.used <= out_cap)
+    if (GdipSaveImageToStream(bitmap, stm, &g_pngClsid, NULL) == 0)
     {
-        memcpy(out, ms.buf, ms.used);
-        result = ms.used;
+        uint8_t *buf = NULL;
+        size_t len = stream_to_mem(stm, &buf);
+        if (len > 0 && len <= out_cap)
+        {
+            memcpy(out, buf, len);
+            result = len;
+        }
+        free(buf);
     }
 
-    free(ms.buf);
+    stm->lpVtbl->Release(stm);
     GdipDisposeImage(bitmap);
-    GdiplusShutdown(token);
     return result;
 }
