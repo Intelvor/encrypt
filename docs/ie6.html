@@ -14,41 +14,44 @@ textarea { border: 1px solid #999; padding: 5px; font-size: 14px; width: 95%; he
 .btn:hover { background: #d8d8d8; }
 .status { font-size: 12px; color: #666; margin-top: 8px; }
 .note { font-size: 12px; color: #999; margin-top: 10px; }
+.lang { float: right; font-size: 13px; margin-top: -2px; }
+.lang select { font-size: 13px; }
 </style>
 </head>
 <body>
 <div class="box">
-<h1>加解密工具</h1>
+<div class="lang"><span id="langLabel">语言</span>: <select id="langSelect" onchange="setLang(this.value)"><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option></select></div>
+<h1 id="title">加解密工具</h1>
 <table cellpadding="5" cellspacing="0">
 <tr>
-<td><label>密钥：</label></td>
+<td><label id="lblKey">密钥：</label></td>
 <td><input type="text" id="key" value="mimo" style="width:180px"></td>
-<td style="padding-left:15px"><label>轮次：</label></td>
+<td style="padding-left:15px"><label id="lblRounds">轮次：</label></td>
 <td><input type="number" id="rounds" value="1" min="1" max="99" style="width:50px"></td>
 </tr>
 </table>
 </div>
 
 <div class="box">
-<label>输入文本：</label>
+<label id="lblInput">输入文本：</label>
 <textarea id="input"></textarea>
 </div>
 
 <div class="box">
-<input type="button" class="btn" value="加密" onclick="doEncrypt()">
-<input type="button" class="btn" value="解密" onclick="doDecrypt()">
-<input type="button" class="btn" value="复制" onclick="doCopy()">
-<input type="button" class="btn" value="回填" onclick="doSwap()">
-<input type="button" class="btn" value="清空" onclick="doClear()">
+<input type="button" class="btn" id="btnEnc" value="加密" onclick="doEncrypt()">
+<input type="button" class="btn" id="btnDec" value="解密" onclick="doDecrypt()">
+<input type="button" class="btn" id="btnCopy" value="复制" onclick="doCopy()">
+<input type="button" class="btn" id="btnSwap" value="回填" onclick="doSwap()">
+<input type="button" class="btn" id="btnClear" value="清空" onclick="doClear()">
 </div>
 
 <div class="box">
-<label>输出结果：</label>
+<label id="lblOutput">输出结果：</label>
 <textarea id="output" readonly></textarea>
 </div>
 
 <div class="status" id="status">就绪</div>
-<div class="note">兼容 IE6+。密钥 + 轮次加密，与其他版本互通。</div>
+<div class="note" id="note">兼容 IE6+。密钥 + 轮次加密，与其他版本互通。</div>
 
 <script type="text/javascript">
 // ====== Polyfills ======
@@ -90,6 +93,158 @@ if (!Date.now) {
   Date.now = function() { return new Date().getTime(); };
 }
 
+// ====== i18n ======
+var I18N = {
+  'zh-CN': {
+    title: '加解密工具',
+    key: '密钥：',
+    rounds: '轮次：',
+    input: '输入文本：',
+    output: '输出结果：',
+    encrypt: '加密',
+    decrypt: '解密',
+    copy: '复制',
+    swap: '回填',
+    clear: '清空',
+    ready: '就绪',
+    lang: '语言',
+    note: '兼容 IE6+。密钥 + 轮次加密，与其他版本互通。',
+    enterKey: '请输入密钥',
+    enterText: '请输入文本',
+    encDone: '加密完成（{n} 轮）',
+    decDone: '解密完成（{n} 轮）',
+    noCopy: '没有可复制的内容',
+    copied: '已复制到剪贴板',
+    copyFail: '复制失败，请手动复制',
+    noSwap: '没有可回填的内容',
+    swapped: '已回填到输入框',
+    cleared: '已清空'
+  },
+  'zh-TW': {
+    title: '加解密工具',
+    key: '密鑰：',
+    rounds: '輪次：',
+    input: '輸入文字：',
+    output: '輸出結果：',
+    encrypt: '加密',
+    decrypt: '解密',
+    copy: '複製',
+    swap: '回填',
+    clear: '清空',
+    ready: '就緒',
+    lang: '語言',
+    note: '相容 IE6+。密鑰 + 輪次加密，與其他版本互通。',
+    enterKey: '請輸入密鑰',
+    enterText: '請輸入文字',
+    encDone: '加密完成（{n} 輪）',
+    decDone: '解密完成（{n} 輪）',
+    noCopy: '沒有可複製的內容',
+    copied: '已複製到剪貼簿',
+    copyFail: '複製失敗，請手動複製',
+    noSwap: '沒有可回填的內容',
+    swapped: '已回填到輸入框',
+    cleared: '已清空'
+  },
+  'en': {
+    title: 'Encrypt & Decrypt',
+    key: 'Key:',
+    rounds: 'Rounds:',
+    input: 'Input Text:',
+    output: 'Output:',
+    encrypt: 'Encrypt',
+    decrypt: 'Decrypt',
+    copy: 'Copy',
+    swap: 'Swap',
+    clear: 'Clear',
+    ready: 'Ready',
+    lang: 'Language',
+    note: 'IE6+ compatible. Key + rounds encryption, interoperable with other versions.',
+    enterKey: 'Please enter a key',
+    enterText: 'Please enter text',
+    encDone: 'Encryption done ({n} rounds)',
+    decDone: 'Decryption done ({n} rounds)',
+    noCopy: 'Nothing to copy',
+    copied: 'Copied to clipboard',
+    copyFail: 'Copy failed, please copy manually',
+    noSwap: 'Nothing to swap',
+    swapped: 'Swapped to input',
+    cleared: 'Cleared'
+  }
+};
+
+var currentLang = 'zh-CN';
+
+function getCookie(name) {
+  var pairs = document.cookie.split(';');
+  for (var i = 0; i < pairs.length; i++) {
+    var c = pairs[i].replace(/^\s+/, '');
+    if (c.indexOf(name + '=') === 0) return c.substring(name.length + 1);
+  }
+  return '';
+}
+
+function setCookie(name, value) {
+  var d = new Date();
+  d.setTime(d.getTime() + 365 * 24 * 60 * 60 * 1000);
+  document.cookie = name + '=' + value + ';expires=' + d.toGMTString() + ';path=/';
+}
+
+function t(key) {
+  return (I18N[currentLang] || I18N['zh-CN'])[key] || key;
+}
+
+function applyI18n() {
+  document.title = t('title');
+  $('title').innerHTML = t('title');
+  $('lblKey').innerHTML = t('key');
+  $('lblRounds').innerHTML = t('rounds');
+  $('lblInput').innerHTML = t('input');
+  $('lblOutput').innerHTML = t('output');
+  $('btnEnc').value = t('encrypt');
+  $('btnDec').value = t('decrypt');
+  $('btnCopy').value = t('copy');
+  $('btnSwap').value = t('swap');
+  $('btnClear').value = t('clear');
+  $('langLabel').innerHTML = t('lang');
+  $('note').innerHTML = t('note');
+  if (lastStatusKey) {
+    var msg = t(lastStatusKey);
+    if (lastStatusParams) {
+      for (var k in lastStatusParams) {
+        if (lastStatusParams.hasOwnProperty(k)) {
+          msg = msg.replace('{' + k + '}', lastStatusParams[k]);
+        }
+      }
+    }
+    $('status').innerHTML = msg;
+  } else {
+    $('status').innerHTML = t('ready');
+  }
+}
+
+function setLang(lang) {
+  currentLang = lang;
+  setCookie('lang', lang);
+  applyI18n();
+}
+
+var lastStatusKey = '';
+var lastStatusParams = null;
+
+function setStatus(key, params) {
+  lastStatusKey = key;
+  lastStatusParams = params || null;
+  var msg = t(key);
+  if (params) {
+    for (var k in params) {
+      if (params.hasOwnProperty(k)) {
+        msg = msg.replace('{' + k + '}', params[k]);
+      }
+    }
+  }
+  $('status').innerHTML = msg;
+}
+
 // ====== 加解密算法 ======
 var MOD = 0x110000;
 
@@ -99,21 +254,21 @@ function isControl(code) {
 }
 
 var SAFE_TOTAL = 0;
-var i;
-for (i = 0; i < MOD; i++) {
-  if (!isControl(i)) SAFE_TOTAL++;
+var ii;
+for (ii = 0; ii < MOD; ii++) {
+  if (!isControl(ii)) SAFE_TOTAL++;
 }
 
 var fwdMap = new Array(SAFE_TOTAL);
 var revMap = new Array(MOD);
 var safeIdx = 0;
-for (i = 0; i < MOD; i++) {
-  if (!isControl(i)) {
-    fwdMap[safeIdx] = i;
-    revMap[i] = safeIdx;
+for (ii = 0; ii < MOD; ii++) {
+  if (!isControl(ii)) {
+    fwdMap[safeIdx] = ii;
+    revMap[ii] = safeIdx;
     safeIdx++;
   } else {
-    revMap[i] = -1;
+    revMap[ii] = -1;
   }
 }
 
@@ -204,15 +359,11 @@ function toWinLF(s) {
 // ====== UI ======
 function $(id) { return document.getElementById(id); }
 
-function setStatus(msg) {
-  $('status').innerHTML = msg;
-}
-
 function doEncrypt() {
   var key = $('key').value;
-  if (!key) { setStatus('请输入密钥'); return; }
+  if (!key) { setStatus('enterKey'); return; }
   var text = $('input').value;
-  if (!text) { setStatus('请输入文本'); return; }
+  if (!text) { setStatus('enterText'); return; }
   var rounds = parseInt($('rounds').value, 10) || 1;
   if (rounds < 1) rounds = 1;
   var t0 = Date.now();
@@ -223,14 +374,15 @@ function doEncrypt() {
   var dt = Date.now() - t0;
   $('output').value = toWinLF(text);
   var timeStr = dt < 1000 ? dt + ' ms' : (dt / 1000).toFixed(2) + ' s';
-  setStatus('加密完成（' + rounds + ' 轮） | ' + timeStr);
+  setStatus('encDone', {n: rounds});
+  $('status').innerHTML += ' | ' + timeStr;
 }
 
 function doDecrypt() {
   var key = $('key').value;
-  if (!key) { setStatus('请输入密钥'); return; }
+  if (!key) { setStatus('enterKey'); return; }
   var text = $('input').value;
-  if (!text) { setStatus('请输入文本'); return; }
+  if (!text) { setStatus('enterText'); return; }
   var rounds = parseInt($('rounds').value, 10) || 1;
   if (rounds < 1) rounds = 1;
   var t0 = Date.now();
@@ -241,32 +393,33 @@ function doDecrypt() {
   var dt = Date.now() - t0;
   $('output').value = toWinLF(text);
   var timeStr = dt < 1000 ? dt + ' ms' : (dt / 1000).toFixed(2) + ' s';
-  setStatus('解密完成（' + rounds + ' 轮） | ' + timeStr);
+  setStatus('decDone', {n: rounds});
+  $('status').innerHTML += ' | ' + timeStr;
 }
 
 function doCopy() {
   var out = $('output').value;
-  if (!out) { setStatus('没有可复制的内容'); return; }
+  if (!out) { setStatus('noCopy'); return; }
   if (window.clipboardData) {
     window.clipboardData.setData('Text', out);
-    setStatus('已复制到剪贴板');
+    setStatus('copied');
   } else {
     $('output').select();
     try {
       document.execCommand('copy');
-      setStatus('已复制到剪贴板');
+      setStatus('copied');
     } catch (e) {
-      setStatus('复制失败，请手动复制');
+      setStatus('copyFail');
     }
   }
 }
 
 function doSwap() {
   var out = $('output').value;
-  if (!out) { setStatus('没有可回填的内容'); return; }
+  if (!out) { setStatus('noSwap'); return; }
   $('input').value = out;
   $('output').value = '';
-  setStatus('已回填到输入框');
+  setStatus('swapped');
 }
 
 function doClear() {
@@ -274,8 +427,18 @@ function doClear() {
   $('input').value = '';
   $('output').value = '';
   $('rounds').value = '1';
-  setStatus('已清空');
+  lastStatusKey = '';
+  lastStatusParams = null;
+  setStatus('cleared');
 }
+
+// ====== Init ======
+var savedLang = getCookie('lang');
+if (savedLang && I18N[savedLang]) {
+  currentLang = savedLang;
+  $('langSelect').value = savedLang;
+}
+applyI18n();
 </script>
 </body>
 </html>
