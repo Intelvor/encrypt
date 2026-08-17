@@ -776,9 +776,11 @@ const TextApp = (function() {
     return k;
   }
 
+  function normalizeLF(s) { return s.replace(/\r\n/g, '\n').replace(/\r/g, '\n'); }
+
   function doEncrypt() {
     try {
-      let text = document.getElementById('input').value;
+      let text = normalizeLF(document.getElementById('input').value);
       const key = getKeyString();
       const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
       if (!text) { showToast(t('msgEnterTextEnc')); return; }
@@ -793,7 +795,7 @@ const TextApp = (function() {
 
   function doDecrypt() {
     try {
-      let text = document.getElementById('input').value;
+      let text = normalizeLF(document.getElementById('input').value);
       const key = getKeyString();
       const rounds = Math.max(1, parseInt(document.getElementById('rounds').value, 10) || 1);
       if (!text) { showToast(t('msgEnterTextDec')); return; }

@@ -70,13 +70,21 @@ function safeShift(pos, delta) {
   return p;
 }
 
+// Normalize CRLF → LF, matching the C desktop version's normalize_lf().
+// Order matters: \r\n first (so it doesn't become \n\n), then lone \r.
+function _normalizeLF(s) {
+  return s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
 function encryptText(text, key, rounds) {
+  text = _normalizeLF(text);
   rounds = rounds || 1;
   for (let r = 0; r < rounds; r++) text = _shiftText(text, key, true);
   return text;
 }
 
 function decryptText(cipher, key, rounds) {
+  cipher = _normalizeLF(cipher);
   rounds = rounds || 1;
   for (let r = 0; r < rounds; r++) cipher = _shiftText(cipher, key, false);
   return cipher;
