@@ -9,7 +9,7 @@ set BT=%SDK%\build-tools\34.0.0
 set PLATFORM=%SDK%\platforms\android-34\android.jar
 set SRC=%APP%app\src
 set ASSETS=%APP%app\assets
-set OUT=%APP%..\build
+set OUT=%APP%..\build\android
 
 set AAPT=%BT%\aapt.exe
 set AAPT2=%BT%\aapt2.exe

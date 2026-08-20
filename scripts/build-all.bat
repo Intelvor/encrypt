@@ -1,13 +1,14 @@
 @echo off
-rem Build all platforms. Usage: scripts\build-all.bat [c|android|all]
+rem Build all platforms. Usage: scripts\build-all.bat [c|linux|android|all]
 set ROOT=%~dp0..
 set MODE=%1
 if "%MODE%"=="" set MODE=all
 
 if "%MODE%"=="c" goto c
+if "%MODE%"=="linux" goto linux
 if "%MODE%"=="android" goto android
 
-echo ===== C desktop =====
+echo ===== C desktop (Windows) =====
 pushd "%ROOT%\desktop\c\all"
 call build-all.bat
 popd
@@ -22,6 +23,11 @@ exit /b 0
 pushd "%ROOT%\desktop\c\all"
 call build-all.bat
 popd
+exit /b 0
+
+:linux
+echo Linux build requires make. Run in WSL:
+echo   cd desktop/linux ^&^& make
 exit /b 0
 
 :android

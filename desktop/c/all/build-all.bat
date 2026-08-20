@@ -15,7 +15,7 @@ if errorlevel 1 (
 )
 set SRC=src
 set RES=resources
-set OUT=..\..\..\build
+set OUT=..\..\..\build\windows
 rem windres 2.25 --use-temp-file has a bug on Windows (CreateProcess null);
 rem work around by invoking gcc as the preprocessor explicitly.
 set PREARGS=--preprocessor-arg -E --preprocessor-arg -xc --preprocessor-arg -DRC_INVOKED

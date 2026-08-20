@@ -105,7 +105,7 @@ build-android.bat      :: 输出 build\android\encrypt.apk
 ### 一键构建
 
 ```bat
-scripts\build-all.bat [c|android|all]
+scripts\build-all.bat [c|linux|android|all]
 ```
 
 ## 算法
