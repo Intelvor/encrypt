@@ -16,9 +16,13 @@
 ```
 encrypt/
 ├── build/                 # 统一构建产物目录（gitignore）
-│   ├── encrypt.exe        # C 桌面版（Windows）
-│   ├── encrypt-gtk        # C 桌面版（Linux）
-│   └── encrypt.apk        # Android 版
+│   ├── windows/           # Windows 版
+│   │   ├── encrypt.exe
+│   │   └── crypto_selftest.exe
+│   ├── linux/             # Linux 版
+│   │   └── encrypt-gtk
+│   └── android/           # Android 版
+│       └── encrypt.apk
 ├── web/                   # 网页版（浏览器打开即用）
 │   └── index.html         # 单一源页面：文本 + 图片（含 Android 平台特性检测）
 ├── desktop/
@@ -51,7 +55,7 @@ scripts\sync-android.bat      :: web → android/app/assets/（Android APK 内�
 
 ## 构建
 
-所有构建产物统一输出到根目录 `build/`。
+所有构建产物统一输出到根目录 `build/<平台>/`。
 
 ### 桌面版（C）
 
@@ -62,7 +66,7 @@ scripts\sync-android.bat      :: web → android/app/assets/（Android APK 内�
 
 ```bat
 cd desktop\c\all
-build-all.bat          :: 输出 build\encrypt.exe
+build-all.bat          :: 输出 build\windows\encrypt.exe
 ```
 
 #### Linux
@@ -82,7 +86,7 @@ sudo pacman -S base-devel gtk3 pkgconf
 
 ```bash
 cd desktop/linux
-make                   # 输出 ../build/encrypt-gtk
+make                   # 输出 build/linux/encrypt-gtk
 ```
 
 ### Android 版
@@ -92,7 +96,7 @@ make                   # 输出 ../build/encrypt-gtk
 
 ```bat
 cd android
-build-android.bat      :: 输出 build\encrypt.apk
+build-android.bat      :: 输出 build\android\encrypt.apk
 ```
 
 签名 keystore 放在仓库外（`%USERPROFILE%\.android\encrypt.keystore`），首次运行按脚本

@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -O2 -std=c11 $(shell pkg-config --cflags gtk+-3.0)
 LDFLAGS = $(shell pkg-config --libs gtk+-3.0) -lpthread -lm
 
 SRC_DIR = src
-BUILD_DIR = ../build
+BUILD_DIR = ../../build/linux
 
 TARGET = $(BUILD_DIR)/encrypt-gtk
 

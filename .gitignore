@@ -1,11 +1,8 @@
 # ===== 编译产物 =====
 *.o
 *.obj
-*.exe
 *.class
 *.dex
-*.apk
-*.idsig
 *.a
 *.dll
 
@@ -15,16 +12,6 @@ build/
 # ===== Android SDK / 构建 =====
 android/sdk/
 android/sdk-tools/
-android/build/classes/
-android/build/dexout/
-android/build/base.apk
-android/build/aligned.apk
-android/build/*.idsig
-# keystore 是签名密钥，不入库
-android/build/*.keystore
-
-# ===== Android SDK 工具压缩包 =====
-*.zip
 
 # ===== 临时文件 =====
 *.tmp
