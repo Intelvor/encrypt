@@ -13,6 +13,11 @@ pushd "%ROOT%\desktop\c\all"
 call build-all.bat
 popd
 
+echo ===== Linux (WSL) =====
+set WSLPATH=/mnt/c/%ROOT:C:\=%
+set WSLPATH=%WSLPATH:\=/%
+wsl -e make -C "%WSLPATH%/desktop/linux"
+
 echo ===== Android =====
 pushd "%ROOT%\android"
 call build-android.bat
@@ -26,8 +31,10 @@ popd
 exit /b 0
 
 :linux
-echo Linux build requires make. Run in WSL:
-echo   cd desktop/linux ^&^& make
+rem Convert Windows path to WSL mount path and run make
+set WSLPATH=/mnt/c/%ROOT:C:\=%
+set WSLPATH=%WSLPATH:\=/%
+wsl -e make -C "%WSLPATH%/desktop/linux"
 exit /b 0
 
 :android
