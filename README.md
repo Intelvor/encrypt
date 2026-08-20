@@ -1,6 +1,6 @@
 # 加解密工具
 
-一个跨平台的文本 + 图片加解密工具。密钥 + 轮次加密，网页版、桌面版（C）、Android 版算法互通。
+一个跨平台的文本 + 图片加解密工具。密钥 + 轮次加密，网页版、桌面版（C/Win32、GTK3/Linux）、Android 版算法互通。
 
 > **定位说明**：本工具是**轻量级**加解密，面向日常防窥、内容混淆等场景；
 > 不是现代密码学意义上的加密（无 KDF/盐/认证），**请勿用于保护敏感数据**。
@@ -16,12 +16,14 @@
 ```
 encrypt/
 ├── build/                 # 统一构建产物目录（gitignore）
-│   ├── encrypt.exe        # C 桌面版
+│   ├── encrypt.exe        # C 桌面版（Windows）
+│   ├── encrypt-gtk        # C 桌面版（Linux）
 │   └── encrypt.apk        # Android 版
 ├── web/                   # 网页版（浏览器打开即用）
 │   └── index.html         # 单一源页面：文本 + 图片（含 Android 平台特性检测）
 ├── desktop/
-│   └── c/all/             # 桌面版（C, Win32 GUI）：文本 + 图片
+│   ├── c/all/             # 桌面版（C, Win32 GUI）：文本 + 图片
+│   └── linux/             # 桌面版（C, GTK3 GUI）：文本 + 图片
 ├── android/               # Android 版（WebView 壳）
 │   ├── app/               # 应用源码（Java + assets + res）
 │   ├── sdk/               # 本地 Android SDK（gitignore，需自行放置）
@@ -53,12 +55,34 @@ scripts\sync-android.bat      :: web → android/app/assets/（Android APK 内�
 
 ### 桌面版（C）
 
+#### Windows
+
 需要 [TDM-GCC](https://jmeubank.github.io/tdm-gcc/)（或任意 MinGW-w64）。
 脚本会依次尝试 `%GCC%` 环境变量、PATH 中的 `gcc`，最后回退到已知安装路径。
 
 ```bat
 cd desktop\c\all
 build-all.bat          :: 输出 build\encrypt.exe
+```
+
+#### Linux
+
+需要 GCC 和 GTK3 开发库。
+
+```bash
+# Debian/Ubuntu
+sudo apt install build-essential libgtk-3-dev pkg-config
+
+# Fedora
+sudo dnf install gcc gtk3-devel pkgconfig
+
+# Arch
+sudo pacman -S base-devel gtk3 pkgconf
+```
+
+```bash
+cd desktop/linux
+make                   # 输出 ../build/encrypt-gtk
 ```
 
 ### Android 版
@@ -88,7 +112,8 @@ scripts\build-all.bat [c|android|all]
 
 ## 兼容性
 
-- 桌面版：Windows XP+（图片版依赖 GDI+，XP 自带）
+- 桌面版（Windows）：Windows XP+（图片版依赖 GDI+，XP 自带）
+- 桌面版（Linux）：GTK3（主流发行版均自带）
 - Android：API 24+（Android 7.0+）
 
 ## License
