@@ -5,13 +5,31 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <locale.h>
 #include <time.h>
 #include "crypto.h"
 #include "crypto_img.h"
 
 // ====== 多语言 ======
 enum { LANG_ZH_CN = 0, LANG_ZH_TW = 1, LANG_EN = 2 };
-static int g_lang = LANG_ZH_CN;
+static int g_lang = LANG_EN;
+
+static int detect_system_lang(void)
+{
+    const gchar * const *langs = g_get_language_names();
+    if (langs && langs[0])
+    {
+        const gchar *l = langs[0];
+        if (g_str_has_prefix(l, "zh"))
+        {
+            if (g_str_has_prefix(l, "zh-TW") || g_str_has_prefix(l, "zh-HK") ||
+                g_str_has_prefix(l, "zh-MO") || g_str_has_prefix(l, "zh-Hant"))
+                return LANG_ZH_TW;
+            return LANG_ZH_CN;
+        }
+    }
+    return LANG_EN;  // 其他语言一律回退 English
+}
 
 typedef struct {
     const char *windowTitle;
@@ -922,7 +940,9 @@ static GtkWidget* create_image_tab(void)
 
 int main(int argc, char *argv[])
 {
+    setlocale(LC_ALL, "");
     gtk_init(&argc, &argv);
+    g_lang = detect_system_lang();
     crypto_init();
 
     // 主窗口

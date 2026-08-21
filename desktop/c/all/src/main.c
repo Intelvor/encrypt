@@ -198,15 +198,39 @@ static const LangStrings g_strings[] = {
 
 #define S (g_strings[g_lang])
 
+static int detect_system_lang(void)
+{
+    LANGID lang = GetUserDefaultUILanguage();
+    if (PRIMARYLANGID(lang) == LANG_CHINESE)
+    {
+        switch (SUBLANGID(lang))
+        {
+        case SUBLANG_CHINESE_SIMPLIFIED:
+        case SUBLANG_CHINESE_SINGAPORE:
+            return LANG_ZH_CN;
+        default:
+            return LANG_ZH_TW;
+        }
+    }
+    return LANG_EN;  // 其他语言一律回退 English
+}
+
 static void load_lang(void)
 {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\EncryptTool", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
     {
         DWORD val = 0, sz = sizeof(val);
-        RegQueryValueExW(hKey, L"Language", NULL, NULL, (LPBYTE)&val, &sz);
-        if (val <= LANG_EN) g_lang = (int)val;
+        LSTATUS st = RegQueryValueExW(hKey, L"Language", NULL, NULL, (LPBYTE)&val, &sz);
+        if (st == ERROR_SUCCESS && val <= LANG_EN)
+            g_lang = (int)val;          // 用户手动选择过，优先
+        else
+            g_lang = detect_system_lang(); // 首次运行：按系统语言
         RegCloseKey(hKey);
+    }
+    else
+    {
+        g_lang = detect_system_lang();
     }
 }
 
