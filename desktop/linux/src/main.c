@@ -136,6 +136,20 @@ static int i_w = 0, i_h = 0;
 static int i_dirty = 0;
 static int i_show_orig = 0;
 
+// ====== 状态缓存（语言切换时重建） ======
+enum { ST_NONE = 0, ST_READY, ST_TEXT_OP, ST_IMG_INIT, ST_IMG_LOADED, ST_IMG_OP };
+enum { SMSG_NONE = 0, SMSG_ENTER_KEY, SMSG_ENTER_TEXT, SMSG_NO_COPY, SMSG_COPIED,
+       SMSG_NO_SWAP, SMSG_SWAPPED, SMSG_CLEARED, SMSG_IMG_NOT_VALID, SMSG_IMG_OPEN_FIRST,
+       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED, SMSG_NO_PASTE, SMSG_PASTED };
+static struct {
+    int type;
+    int msg;
+    int is_enc;
+    int rounds;
+    double ms;
+    int w, h, kb;
+} g_st = { ST_READY, 0, 0, 0, 0, 0, 0, 0 };
+
 // ====== 工具函数 ======
 static wchar_t *utf8_to_wchar(const char *utf8)
 {
@@ -180,6 +194,78 @@ static void set_status(GtkWidget *status, const char *msg)
     gtk_label_set_text(GTK_LABEL(status), msg);
 }
 
+static const char *smsg_text(int msg)
+{
+    switch (msg)
+    {
+    case SMSG_ENTER_KEY:      return S.enterKey;
+    case SMSG_ENTER_TEXT:     return S.enterText;
+    case SMSG_NO_COPY:        return S.noCopy;
+    case SMSG_COPIED:         return S.copied;
+    case SMSG_NO_SWAP:        return S.noSwap;
+    case SMSG_SWAPPED:        return S.swapped;
+    case SMSG_CLEARED:        return S.cleared;
+    case SMSG_IMG_NOT_VALID:  return S.imgNotValid;
+    case SMSG_IMG_OPEN_FIRST: return S.imgOpenFirst;
+    case SMSG_IMG_ENTER_KEY:  return S.imgEnterKey;
+    case SMSG_IMG_SAVE_FAIL:  return S.imgSaveFail;
+    case SMSG_IMG_SAVED:      return S.imgSaved;
+    case SMSG_IMG_LOADED:     return S.imgLoaded;
+    case SMSG_NO_PASTE:       return S.noCopy;
+    case SMSG_PASTED:         return S.paste;
+    default:                  return S.ready;
+    }
+}
+
+static void rebuild_status(void)
+{
+    GtkWidget *target = (g_notebook && gtk_notebook_get_current_page(g_notebook) == 0) ? t_status : i_status;
+    switch (g_st.type)
+    {
+    case ST_READY:
+        set_status(target, S.ready);
+        break;
+    case ST_TEXT_OP:
+        {
+            char info[256];
+            const char *op = g_st.is_enc ? S.encDone : S.decDone;
+            if (g_st.ms < 1000.0)
+                snprintf(info, sizeof(info), "%s (%d %s) | %.0f ms", op, g_st.rounds, S.rounds, g_st.ms);
+            else
+                snprintf(info, sizeof(info), "%s (%d %s) | %.2f s", op, g_st.rounds, S.rounds, g_st.ms / 1000.0);
+            set_status(t_status, info);
+        }
+        break;
+    case ST_IMG_INIT:
+        set_status(i_status, S.imgStatusInit);
+        break;
+    case ST_IMG_LOADED:
+        {
+            char info[256];
+            if (g_st.ms < 1000.0)
+                snprintf(info, sizeof(info), "%d x %d (%d KB) | %.0f ms", g_st.w, g_st.h, g_st.kb, g_st.ms);
+            else
+                snprintf(info, sizeof(info), "%d x %d (%d KB) | %.2f s", g_st.w, g_st.h, g_st.kb, g_st.ms / 1000.0);
+            set_status(i_status, info);
+        }
+        break;
+    case ST_IMG_OP:
+        {
+            char info[256];
+            const char *op = g_st.is_enc ? S.encDone : S.decDone;
+            if (g_st.ms < 1000.0)
+                snprintf(info, sizeof(info), "%s (%d) | %d x %d | %.0f ms", op, g_st.rounds, g_st.w, g_st.h, g_st.ms);
+            else
+                snprintf(info, sizeof(info), "%s (%d) | %d x %d | %.2f s", op, g_st.rounds, g_st.w, g_st.h, g_st.ms / 1000.0);
+            set_status(i_status, info);
+        }
+        break;
+    default:
+        if (g_st.msg) set_status(target, smsg_text(g_st.msg));
+        break;
+    }
+}
+
 static double get_time_ms(void)
 {
     struct timespec ts;
@@ -192,6 +278,7 @@ static void on_text_encrypt(GtkWidget *widget, gpointer data)
 {
     const char *key_utf8 = gtk_entry_get_text(GTK_ENTRY(t_key));
     if (!key_utf8 || !key_utf8[0]) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_ENTER_KEY;
         set_status(t_status, S.enterKey);
         return;
     }
@@ -201,6 +288,7 @@ static void on_text_encrypt(GtkWidget *widget, gpointer data)
     gtk_text_buffer_get_end_iter(buf, &end);
     char *text = gtk_text_buffer_get_text(buf, &start, &end, FALSE);
     if (!text || !text[0]) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_ENTER_TEXT;
         set_status(t_status, S.enterText);
         g_free(text);
         return;
@@ -225,6 +313,7 @@ static void on_text_encrypt(GtkWidget *widget, gpointer data)
     else
         snprintf(info, sizeof(info), "%s (%d %s) | %.2f s", S.encDone, rounds, S.rounds, dt / 1000.0);
     set_status(t_status, info);
+    g_st.type = ST_TEXT_OP; g_st.msg = SMSG_NONE; g_st.is_enc = 1; g_st.rounds = rounds; g_st.ms = dt;
 
     free(wtext); free(wkey); free(result);
     g_free(text); g_free(result_utf8);
@@ -234,6 +323,7 @@ static void on_text_decrypt(GtkWidget *widget, gpointer data)
 {
     const char *key_utf8 = gtk_entry_get_text(GTK_ENTRY(t_key));
     if (!key_utf8 || !key_utf8[0]) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_ENTER_KEY;
         set_status(t_status, S.enterKey);
         return;
     }
@@ -243,6 +333,7 @@ static void on_text_decrypt(GtkWidget *widget, gpointer data)
     gtk_text_buffer_get_end_iter(buf, &end);
     char *text = gtk_text_buffer_get_text(buf, &start, &end, FALSE);
     if (!text || !text[0]) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_ENTER_TEXT;
         set_status(t_status, S.enterText);
         g_free(text);
         return;
@@ -267,6 +358,7 @@ static void on_text_decrypt(GtkWidget *widget, gpointer data)
     else
         snprintf(info, sizeof(info), "%s (%d %s) | %.2f s", S.decDone, rounds, S.rounds, dt / 1000.0);
     set_status(t_status, info);
+    g_st.type = ST_TEXT_OP; g_st.msg = SMSG_NONE; g_st.is_enc = 0; g_st.rounds = rounds; g_st.ms = dt;
 
     free(wtext); free(wkey); free(result);
     g_free(text); g_free(result_utf8);
@@ -280,12 +372,14 @@ static void on_text_copy(GtkWidget *widget, gpointer data)
     gtk_text_buffer_get_end_iter(buf, &end);
     char *text = gtk_text_buffer_get_text(buf, &start, &end, FALSE);
     if (!text || !text[0]) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_NO_COPY;
         set_status(t_status, S.noCopy);
         g_free(text);
         return;
     }
     GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
     gtk_clipboard_set_text(clipboard, text, -1);
+    g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
     set_status(t_status, S.copied);
     g_free(text);
 }
@@ -298,6 +392,7 @@ static void on_text_swap(GtkWidget *widget, gpointer data)
     gtk_text_buffer_get_end_iter(out_buf, &end);
     char *text = gtk_text_buffer_get_text(out_buf, &start, &end, FALSE);
     if (!text || !text[0]) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_NO_SWAP;
         set_status(t_status, S.noSwap);
         g_free(text);
         return;
@@ -305,6 +400,7 @@ static void on_text_swap(GtkWidget *widget, gpointer data)
     GtkTextBuffer *in_buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(t_input));
     gtk_text_buffer_set_text(in_buf, text, -1);
     gtk_text_buffer_set_text(out_buf, "", -1);
+    g_st.type = ST_NONE; g_st.msg = SMSG_SWAPPED;
     set_status(t_status, S.swapped);
     g_free(text);
 }
@@ -317,6 +413,7 @@ static void on_text_clear(GtkWidget *widget, gpointer data)
     GtkTextBuffer *out_buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(t_output));
     gtk_text_buffer_set_text(out_buf, "", -1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(t_round), 1);
+    g_st.type = ST_READY; g_st.msg = SMSG_NONE;
     set_status(t_status, S.cleared);
 }
 
@@ -325,11 +422,13 @@ static void on_text_paste(GtkWidget *widget, gpointer data)
     GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
     char *text = gtk_clipboard_wait_for_text(clipboard);
     if (!text) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_NO_COPY;
         set_status(t_status, S.noCopy);
         return;
     }
     GtkTextBuffer *in_buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(t_input));
     gtk_text_buffer_set_text(in_buf, text, -1);
+    g_st.type = ST_NONE; g_st.msg = SMSG_PASTED;
     set_status(t_status, S.paste);
     g_free(text);
 }
@@ -410,11 +509,16 @@ static void on_image_open(GtkWidget *widget, gpointer data)
                 char info[256];
                 snprintf(info, sizeof(info), "%s: %d x %d", S.imgLoaded, i_w, i_h);
                 set_status(i_status, info);
+                g_st.type = ST_IMG_LOADED; g_st.msg = SMSG_NONE;
+                g_st.w = i_w; g_st.h = i_h;
+                g_st.kb = (int)((size_t)i_w * i_h * 4 / 1024);
+                g_st.ms = 0;
 
                 gtk_widget_set_sensitive(i_btn_enc, TRUE);
                 gtk_widget_set_sensitive(i_btn_dec, TRUE);
                 gtk_widget_set_sensitive(i_btn_save, FALSE);
             } else {
+                g_st.type = ST_NONE; g_st.msg = SMSG_IMG_NOT_VALID;
                 set_status(i_status, S.imgNotValid);
                 g_error_free(error);
             }
@@ -428,11 +532,13 @@ static void on_image_transform(GtkWidget *widget, gpointer data)
 {
     int enc = GPOINTER_TO_INT(data);
     if (!i_pixbuf) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_IMG_OPEN_FIRST;
         set_status(i_status, S.imgOpenFirst);
         return;
     }
     const char *key_utf8 = gtk_entry_get_text(GTK_ENTRY(i_key));
     if (!key_utf8 || !key_utf8[0]) {
+        g_st.type = ST_NONE; g_st.msg = SMSG_IMG_ENTER_KEY;
         set_status(i_status, S.imgEnterKey);
         return;
     }
@@ -500,6 +606,8 @@ static void on_image_transform(GtkWidget *widget, gpointer data)
         snprintf(info, sizeof(info), "%s (%d) | %d x %d | %.2f s",
                  enc ? S.encDone : S.decDone, rounds, i_w, i_h, dt / 1000.0);
     set_status(i_status, info);
+    g_st.type = ST_IMG_OP; g_st.msg = SMSG_NONE;
+    g_st.is_enc = enc; g_st.rounds = rounds; g_st.ms = dt; g_st.w = i_w; g_st.h = i_h;
 }
 
 static void on_image_save(GtkWidget *widget, gpointer data)
@@ -526,8 +634,10 @@ static void on_image_save(GtkWidget *widget, gpointer data)
         if (filename) {
             GError *error = NULL;
             if (gdk_pixbuf_save(i_pixbuf, filename, "png", &error, NULL)) {
+                g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVED;
                 set_status(i_status, S.imgSaved);
             } else {
+                g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVE_FAIL;
                 set_status(i_status, S.imgSaveFail);
                 g_error_free(error);
             }
@@ -542,6 +652,7 @@ static void on_image_copy(GtkWidget *widget, gpointer data)
     if (!i_pixbuf) return;
     GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
     gtk_clipboard_set_image(clipboard, i_pixbuf);
+    g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
     set_status(i_status, S.copied);
 }
 
@@ -557,6 +668,7 @@ static void on_image_clear(GtkWidget *widget, gpointer data)
     gtk_widget_set_sensitive(i_btn_enc, FALSE);
     gtk_widget_set_sensitive(i_btn_dec, FALSE);
     gtk_widget_set_sensitive(i_btn_save, FALSE);
+    g_st.type = ST_IMG_INIT; g_st.msg = SMSG_NONE;
     set_status(i_status, S.cleared);
 }
 
@@ -596,11 +708,16 @@ static void on_drag_data_received(GtkWidget *widget, GdkDragContext *context,
                     char info[256];
                     snprintf(info, sizeof(info), "%s: %d x %d", S.imgLoaded, i_w, i_h);
                     set_status(i_status, info);
+                    g_st.type = ST_IMG_LOADED; g_st.msg = SMSG_NONE;
+                    g_st.w = i_w; g_st.h = i_h;
+                    g_st.kb = (int)((size_t)i_w * i_h * 4 / 1024);
+                    g_st.ms = 0;
 
                     gtk_widget_set_sensitive(i_btn_enc, TRUE);
                     gtk_widget_set_sensitive(i_btn_dec, TRUE);
                     gtk_widget_set_sensitive(i_btn_save, FALSE);
                 } else {
+                    g_st.type = ST_NONE; g_st.msg = SMSG_IMG_NOT_VALID;
                     set_status(i_status, S.imgNotValid);
                     g_error_free(error);
                 }
@@ -635,8 +752,8 @@ static void on_lang_changed(GtkComboBox *combo, gpointer data)
         gtk_button_set_label(GTK_BUTTON(i_btn_save), S.savePng);
         gtk_button_set_label(GTK_BUTTON(i_btn_copy), S.copy);
         gtk_button_set_label(GTK_BUTTON(i_btn_clear), S.clear);
-        set_status(t_status, S.ready);
-        set_status(i_status, S.imgStatusInit);
+        // 重建状态栏（保留当前操作状态，仅切换语言文本）
+        rebuild_status();
     }
 }
 
