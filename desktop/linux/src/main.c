@@ -563,6 +563,9 @@ static void on_image_clear(GtkWidget *widget, gpointer data)
 static void on_orig_toggled(GtkWidget *widget, gpointer data)
 {
     i_show_orig = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(i_chk_orig));
+    // 显示原图时禁用加解密按钮，防止误操作
+    gtk_widget_set_sensitive(i_btn_enc, !i_show_orig && i_pixbuf);
+    gtk_widget_set_sensitive(i_btn_dec, !i_show_orig && i_pixbuf);
     update_image_display();
 }
 

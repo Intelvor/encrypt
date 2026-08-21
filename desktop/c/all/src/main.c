@@ -1239,6 +1239,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case ID_I_CLEAR: i_clear(); break;
         case ID_I_CHKORIG:
             i_show_orig = (SendMessageW(i_chk, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            // 显示原图时禁用加解密按钮，防止误操作
+            EnableWindow(i_enc, !i_show_orig && i_pixels);
+            EnableWindow(i_dec, !i_show_orig && i_pixels);
             InvalidateRect(i_pic, NULL, TRUE);
             break;
         }
