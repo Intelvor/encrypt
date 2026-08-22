@@ -169,35 +169,37 @@ static struct {
 } g_st = { ST_READY, 0, 0, 0, 0, 0, 0, 0 };
 
 // ====== 工具函数 ======
+// UTF-8 → UTF-16 码元（存入 wchar_t 数组）。crypto.c 按 UTF-16 处理代理对，
+// 与 Windows 版 wchar_t（2 字节 UTF-16）行为一致。
 static wchar_t *utf8_to_wchar(const char *utf8)
 {
     if (!utf8) return NULL;
-    int cap = strlen(utf8) + 1;
-    wchar_t *out = (wchar_t *)malloc((size_t)cap * sizeof(wchar_t));
-    if (!out) return NULL;
-    int len = 0;
-    const unsigned char *s = (const unsigned char *)utf8;
-    while (*s) {
-        unsigned int cp;
-        if (*s < 0x80) { cp = *s++; }
-        else if ((*s & 0xE0) == 0xC0) { cp = (*s++ & 0x1F) << 6; cp |= (*s++ & 0x3F); }
-        else if ((*s & 0xF0) == 0xE0) { cp = (*s++ & 0x0F) << 12; cp |= (*s++ & 0x3F) << 6; cp |= (*s++ & 0x3F); }
-        else { cp = (*s++ & 0x07) << 18; cp |= (*s++ & 0x3F) << 12; cp |= (*s++ & 0x3F) << 6; cp |= (*s++ & 0x3F); }
-        out[len++] = (wchar_t)cp;
-    }
+    glong len = 0;
+    gunichar2 *u16 = g_utf8_to_utf16(utf8, -1, NULL, &len, NULL);
+    if (!u16) return NULL;
+    wchar_t *out = (wchar_t *)malloc(((size_t)len + 1) * sizeof(wchar_t));
+    if (!out) { g_free(u16); return NULL; }
+    for (glong i = 0; i < len; i++) out[i] = (wchar_t)u16[i];
     out[len] = 0;
+    g_free(u16);
     return out;
 }
 
+// UTF-16 码元（wchar_t 数组，可能含代理对）→ UTF-8
 static char *wchar_to_utf8(const wchar_t *w)
 {
     if (!w) return NULL;
-    int cap = (int)wcslen(w) * 4 + 1;
+    // 容量：每码元最多 3 字节；代理对 2 码元 → 4 字节，留足余量
+    int cap = (int)wcslen(w) * 3 + 8;
     char *out = (char *)malloc((size_t)cap);
     if (!out) return NULL;
     int len = 0;
-    for (; *w; w++) {
-        unsigned int cp = (unsigned int)*w;
+    for (const wchar_t *p = w; *p; p++) {
+        unsigned int cp = (unsigned int)*p;
+        if (cp >= 0xD800 && cp <= 0xDBFF && p[1] >= 0xDC00 && p[1] <= 0xDFFF) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + ((unsigned int)p[1] - 0xDC00);
+            p++;
+        }
         if (cp < 0x80) { out[len++] = (char)cp; }
         else if (cp < 0x800) { out[len++] = 0xC0 | (cp >> 6); out[len++] = 0x80 | (cp & 0x3F); }
         else if (cp < 0x10000) { out[len++] = 0xE0 | (cp >> 12); out[len++] = 0x80 | ((cp >> 6) & 0x3F); out[len++] = 0x80 | (cp & 0x3F); }
