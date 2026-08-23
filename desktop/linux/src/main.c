@@ -484,14 +484,15 @@ static void update_image_display(void)
     int src_w = gdk_pixbuf_get_width(display);
     int src_h = gdk_pixbuf_get_height(display);
 
-    if (src_w > max_w || src_h > max_h) {
-        double scale_x = (double)max_w / src_w;
-        double scale_y = (double)max_h / src_h;
-        double scale = scale_x < scale_y ? scale_x : scale_y;
-        int new_w = (int)(src_w * scale);
-        int new_h = (int)(src_h * scale);
-        if (new_w < 1) new_w = 1;
-        if (new_h < 1) new_h = 1;
+    // 始终等比缩放适配窗口：图片过大时缩小，过小时拉伸放大（与 Windows 版一致）
+    double scale_x = (double)max_w / src_w;
+    double scale_y = (double)max_h / src_h;
+    double scale = scale_x < scale_y ? scale_x : scale_y;
+    int new_w = (int)(src_w * scale);
+    int new_h = (int)(src_h * scale);
+    if (new_w < 1) new_w = 1;
+    if (new_h < 1) new_h = 1;
+    if (new_w != src_w || new_h != src_h) {
         GdkPixbuf *scaled = gdk_pixbuf_scale_simple(display, new_w, new_h, GDK_INTERP_BILINEAR);
         gtk_image_set_from_pixbuf(GTK_IMAGE(i_image), scaled);
         g_object_unref(scaled);
