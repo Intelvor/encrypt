@@ -40,7 +40,9 @@ jobs:
           npm publish --access public
 
       # ---- 2. Publish to GitHub Packages (@Intelvor/crypt-lite) ----
+      # if: always()：即使 npmjs 发布失败（如 token 配置问题），也独立发布 GitHub Packages
       - name: Publish to GitHub Packages
+        if: always()
         working-directory: npm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
