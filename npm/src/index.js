@@ -76,16 +76,25 @@ function _normalizeLF(s) {
   return s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
+// 统一轮次校验：非正整数 / Infinity / NaN 一律按 1 处理（避免死循环或静默原样返回）。
+// 上限防止误传超大值（如 0x7FFFFFFF）造成长时间卡顿。
+const MAX_ROUNDS = 100000;
+function _normalizeRounds(rounds) {
+  if (!Number.isInteger(rounds) || rounds < 1) return 1;
+  if (rounds > MAX_ROUNDS) return MAX_ROUNDS;
+  return rounds;
+}
+
 function encryptText(text, key, rounds) {
   text = _normalizeLF(text);
-  rounds = rounds || 1;
+  rounds = _normalizeRounds(rounds);
   for (let r = 0; r < rounds; r++) text = _shiftText(text, key, true);
   return text;
 }
 
 function decryptText(cipher, key, rounds) {
   cipher = _normalizeLF(cipher);
-  rounds = rounds || 1;
+  rounds = _normalizeRounds(rounds);
   for (let r = 0; r < rounds; r++) cipher = _shiftText(cipher, key, false);
   return cipher;
 }
@@ -171,13 +180,11 @@ function roundTransform(px32, perm, npx, xv, out32, st, enc) {
  * @param {number} h
  */
 function encryptImageRGBA(px, key, rounds, w, h) {
-  rounds = rounds || 1;
-  _transformImage(px, key, rounds, w, h, true);
+  _transformImage(px, key, _normalizeRounds(rounds), w, h, true);
 }
 
 function decryptImageRGBA(px, key, rounds, w, h) {
-  rounds = rounds || 1;
-  _transformImage(px, key, rounds, w, h, false);
+  _transformImage(px, key, _normalizeRounds(rounds), w, h, false);
 }
 
 function _transformImage(px, key, rounds, w, h, enc) {

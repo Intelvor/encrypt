@@ -37,9 +37,3 @@ export function decryptPNGFile(
   key: string,
   rounds?: number
 ): Promise<void>;
-
-export const _internal: {
-  MOD: number;
-  isControl(code: number): boolean;
-  makeShift(key: string, pos: number): number;
-};

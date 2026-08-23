@@ -174,12 +174,9 @@ console.log('[T15] Negative rounds');
   const text = 'Hello';
   try {
     const enc = encryptText(text, 'k', -1);
-    // JS: -1 rounds → loop 0 times → returns text unchanged
-    warn('negative rounds (-1) does not throw, returns: "' + enc.substring(0, 20) + '"');
-    // Verify: -1 is truthy, loop runs 0 times (r < -1 is false for r=0)
-    // Actually: for (let r = 0; r < -1; r++) → never executes
-    // So encryptText with -1 returns text as-is
-    assert(enc === text, 'negative rounds returns text unchanged (no loop)');
+    // Negative rounds are normalized to 1 (no silent no-op, no infinite loop)
+    const enc1 = encryptText(text, 'k', 1);
+    assert(enc === enc1, 'negative rounds normalized to 1 (same as 1 round)');
   } catch (e) {
     warn('negative rounds throws: ' + e.message);
   }
@@ -621,8 +618,11 @@ console.log('[T27] Very large rounds (integer overflow in image seed)');
   const px = new Uint8ClampedArray(4 * 4 * 4);
   for (let i = 0; i < px.length; i++) px[i] = i & 0xFF;
   const orig = new Uint8ClampedArray(px);
-  // Math.imul(0x7FFFFFFF, 0x9E3779B9) should handle overflow correctly
-  warn('extreme rounds (0x7FFFFFFF) - skipped due to time (would run ~minutes)');
+  // Math.imul(0x7FFFFFFF, 0x9E3779B9) should handle overflow correctly.
+  // rounds are now capped at MAX_ROUNDS, so this must return quickly, not hang.
+  const t0 = Date.now();
+  encryptImageRGBA(px, 'k', 0x7FFFFFFF, 4, 4);
+  assert(Date.now() - t0 < 2000, '0x7FFFFFFF rounds capped, returns quickly');
   // Test with something feasible (100 rounds on 2x2)
   const px2 = new Uint8ClampedArray(2 * 2 * 4);
   for (let i = 0; i < px2.length; i++) px2[i] = i & 0xFF;

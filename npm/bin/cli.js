@@ -17,11 +17,14 @@ Options:
   -r, --rounds N      Number of rounds (default: 1)
   -i, --in FILE       Input file (text or PNG). Omit for text to read stdin.
   -o, --out FILE      Output file. Omit to write stdout (text) / required for image.
+  --raw               Text: emit/read raw UTF-8 ciphertext (default is Base64 for encrypt).
+                      Ciphertext can contain lone surrogates / newlines that break
+                      UTF-8 transport; Base64 avoids that.
   -h, --help          Show this help
 
 Examples:
-  echo "hello" | crypt-lite text encrypt -k secret
-  crypt-lite text decrypt -k secret -i enc.txt -o dec.txt
+  echo "hello" | crypt-lite text encrypt -k secret        # Base64 out
+  crypt-lite text decrypt -k secret -i enc.b64 -o dec.txt # Base64 in auto-detected
   crypt-lite image encrypt -k secret -i in.png -o out.png
   crypt-lite image decrypt -k secret -r 3 -i out.png -o dec.png
 `;
@@ -34,6 +37,7 @@ function parseArgs(argv) {
     else if (a === '-r' || a === '--rounds') args.rounds = parseInt(argv[++i], 10) || 1;
     else if (a === '-i' || a === '--in') args.in = argv[++i];
     else if (a === '-o' || a === '--out') args.out = argv[++i];
+    else if (a === '--raw') args.raw = true;
     else if (a === '-h' || a === '--help') args.help = true;
     else if (!args.mode && (a === 'text' || a === 'image')) args.mode = a;
     else if (!args.op && (a === 'encrypt' || a === 'decrypt')) args.op = a;
@@ -58,9 +62,27 @@ async function readText(file) {
   return await readStdin();
 }
 
-function writeText(file, text) {
-  if (file) fs.writeFileSync(file, text, 'utf8');
-  else process.stdout.write(text + '\n');
+function writeText(file, text, base64) {
+  const out = base64 ? Buffer.from(text, 'utf8').toString('base64') : text;
+  if (file) fs.writeFileSync(file, out, 'utf8');
+  else process.stdout.write(out + '\n');
+}
+
+// 检测输入是否为 Base64 密文：长度合理、可解码为 UTF-8 且含换行/孤立代理项时更可能是。
+// 简单起见：能被 base64 解码且解码结果不含 NUL 的视为 Base64。
+function maybeBase64(s) {
+  const t = s.trim();
+  if (!t || t.length < 4) return null;
+  // 去掉可能换行的 base64 后尝试解码
+  const compact = t.replace(/\s+/g, '');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact) || compact.length % 4 !== 0) return null;
+  try {
+    const buf = Buffer.from(compact, 'base64');
+    if (buf.includes(0)) return null; // 含 NUL，不太可能是文本密文
+    return buf.toString('utf8');
+  } catch (e) {
+    return null;
+  }
 }
 
 async function main() {
@@ -80,12 +102,18 @@ async function main() {
 
   try {
     if (args.mode === 'text') {
-      const text = await readText(args.in);
+      let text = await readText(args.in);
+      if (args.op === 'decrypt' && !args.raw) {
+        const decoded = maybeBase64(text);
+        if (decoded !== null) text = decoded;
+      }
       const result =
         args.op === 'encrypt'
           ? crypto.encryptText(text, args.key, args.rounds)
           : crypto.decryptText(text, args.key, args.rounds);
-      writeText(args.out, result);
+      // 加密默认 Base64 输出（密文可能含孤立代理项/换行，破坏 UTF-8 传输）
+      const base64Out = args.op === 'encrypt' && !args.raw;
+      writeText(args.out, result, base64Out);
     } else {
       if (args.op === 'encrypt')
         await crypto.encryptPNGFile(args.in, args.out, args.key, args.rounds);
