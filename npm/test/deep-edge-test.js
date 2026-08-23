@@ -46,14 +46,13 @@ console.log('[D2] Rounds type coercion');
   const enc1 = encryptText(text, 'k', 1);
   assert(encNaN === enc1, 'NaN rounds → same as 1');
   
-  // rounds = 'abc' → string is truthy, loop: 0 < NaN → false, never runs
+  // rounds = 'abc' → non-numeric string, normalized to 1 (used to be a silent no-op)
   const encStr = encryptText(text, 'k', 'abc');
-  assert(encStr === text, '"abc" rounds → text unchanged (0 < NaN = false)');
-  
-  // rounds = '3' → string is truthy, loop: 0 < '3' → 0 < 3 → true, runs 3 times
+  assert(encStr === enc1, '"abc" rounds normalized to 1');
+
+  // rounds = '3' → numeric string, still normalized to 1 (we require a real integer)
   const encStr3 = encryptText(text, 'k', '3');
-  const encNum3 = encryptText(text, 'k', 3);
-  assert(encStr3 === encNum3, '"3" rounds === 3 rounds (JS coercion)');
+  assert(encStr3 === enc1, '"3" rounds normalized to 1 (strings not coerced)');
   
   // rounds = true → truthy, loop: 0 < true → 0 < 1 → true, runs once
   const encTrue = encryptText(text, 'k', true);
@@ -63,14 +62,14 @@ console.log('[D2] Rounds type coercion');
   const encFalse = encryptText(text, 'k', false);
   assert(encFalse === enc1, 'false rounds → 1');
   
-  // rounds = -0.5 → truthy, loop: 0 < -0.5 → false, never runs
+  // rounds = -0.5 → non-positive, normalized to 1 round (used to be a silent no-op)
   const encNegHalf = encryptText(text, 'k', -0.5);
-  assert(encNegHalf === text, '-0.5 rounds → text unchanged');
-  
-  // rounds = 1.5 → truthy, loop runs twice (r=0 < 1.5, r=1 < 1.5, r=2 < 1.5 → stop)
+  const enc1b = encryptText(text, 'k', 1);
+  assert(encNegHalf === enc1b, '-0.5 rounds normalized to 1 round');
+
+  // rounds = 1.5 → non-integer, normalized to 1 round (used to run twice)
   const enc15 = encryptText(text, 'k', 1.5);
-  const enc2 = encryptText(text, 'k', 2);
-  assert(enc15 === enc2, '1.5 rounds === 2 rounds (loop runs r=0,1)');
+  assert(enc15 === enc1b, '1.5 rounds normalized to 1 round');
 }
 
 // --- D3: Image with Uint8Array vs Uint8ClampedArray ---
@@ -271,16 +270,20 @@ console.log('[D11] Web page vs npm rounds handling');
   // npm: rounds || 1 → falsy values become 1, but negative/truthy pass through
   // This means the web page is more defensive
   
-  // Verify: npm allows negative rounds (silent no-op)
+  // npm now normalizes negative/non-integer rounds to 1 (was a silent no-op / raw pass-through)
   const text = 'Hello';
   const encNeg = encryptText(text, 'k', -5);
-  assert(encNeg === text, 'npm: negative rounds returns text unchanged');
-  
-  // Web page would clamp -5 to 1 via Math.max
+  assert(encNeg === encryptText(text, 'k', 1), 'npm: negative rounds normalized to 1');
+
+  // Infinity is clamped (no infinite loop)
+  const encInf = encryptText(text, 'k', Infinity);
+  assert(encInf === encryptText(text, 'k', 1), 'npm: Infinity rounds clamped to 1');
+
+  // Web page clamps -5 to 1 via Math.max — both now agree
   const webEnc = encryptText(text, 'k', Math.max(1, -5));
-  assert(webEnc !== text, 'web page: Math.max(1,-5)=1 produces encrypted output');
-  
-  console.log('  ⚠ Web page uses Math.max(1,...), npm uses rounds||1 → different behavior for negative/zero');
+  assert(encNeg === webEnc, 'npm and web page agree on negative rounds → 1');
+
+  console.log('  ✓ npm now normalizes invalid rounds, matching web page Math.max(1,...)');
 }
 
 // --- D12: Memory allocation pattern for images ---

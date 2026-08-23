@@ -28,12 +28,12 @@ cd desktop/linux
 make
 ```
 
-产物位于 `../../build/encrypt-gtk`。
+产物位于 `../../build/linux/encrypt-gtk`。
 
 ## 运行
 
 ```bash
-./build/encrypt-gtk
+../../build/linux/encrypt-gtk
 ```
 
 ## 功能

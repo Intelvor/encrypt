@@ -25,15 +25,16 @@
   "files": [
     "src",
     "bin",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "dependencies": {
     "pngjs": "^7.0.0"
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=18"
   },
   "scripts": {
-    "test": "node test/index.test.js"
+    "test": "node test/index.test.js && node test/deep-edge-test.js && node test/extreme-test.js"
   }
 }

@@ -68,6 +68,7 @@ typedef struct {
     const wchar_t *imgOpenFirst;
     const wchar_t *imgSaved;
     const wchar_t *imgSaveFail;
+    const wchar_t *imgOom;
     const wchar_t *langLabel;
     const wchar_t *fileFilter;
     const wchar_t *pngFilter;
@@ -110,6 +111,7 @@ static const LangStrings g_strings[] = {
         L"\u8bf7\u5148\u6253\u5f00\u56fe\u7247",
         L"\u5df2\u4fdd\u5b58",
         L"\u4fdd\u5b58\u5931\u8d25",
+        L"\u5185\u5b58\u4e0d\u8db3\uff0c\u56fe\u7247\u672a\u53d8\u5316",
         L"\u8bed\u8a00",
         L"\u56fe\u7247\u6587\u4ef6 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG \u56fe\u7247 (*.png)\0*.png\0JPEG \u56fe\u7247 (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP \u56fe\u7247 (*.bmp)\0*.bmp\0\u6240\u6709\u6587\u4ef6 (*.*)\0*.*\0",
         L"PNG \u56fe\u7247 (*.png)\0*.png\0"
@@ -150,6 +152,7 @@ static const LangStrings g_strings[] = {
         L"\u8acb\u5148\u958b\u555f\u5716\u7247",
         L"\u5df2\u5132\u5b58",
         L"\u5132\u5b58\u5931\u6557",
+        L"\u8a18\u61b6\u9ad4\u4e0d\u8db3\uff0c\u5716\u7247\u672a\u8b8a\u5316",
         L"\u8a9e\u8a00",
         L"\u5716\u7247\u6587\u4ef6 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG \u5716\u7247 (*.png)\0*.png\0JPEG \u5716\u7247 (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP \u5716\u7247 (*.bmp)\0*.bmp\0\u6240\u6709\u6587\u4ef6 (*.*)\0*.*\0",
         L"PNG \u5716\u7247 (*.png)\0*.png\0"
@@ -190,6 +193,7 @@ static const LangStrings g_strings[] = {
         L"Please open an image first",
         L"Saved",
         L"Save failed",
+        L"Out of memory, image unchanged",
         L"Language",
         L"Image files (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG images (*.png)\0*.png\0JPEG images (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP images (*.bmp)\0*.bmp\0All files (*.*)\0*.*\0",
         L"PNG images (*.png)\0*.png\0"
@@ -318,7 +322,8 @@ static void set_text(HWND h, const wchar_t *s);
 enum { ST_NONE = 0, ST_READY, ST_TEXT_OP, ST_IMG_INIT, ST_IMG_LOADED, ST_IMG_OP };
 enum { SMSG_NONE = 0, SMSG_ENTER_KEY, SMSG_ENTER_TEXT, SMSG_NO_COPY, SMSG_COPIED,
        SMSG_NO_SWAP, SMSG_SWAPPED, SMSG_CLEARED, SMSG_IMG_NOT_VALID, SMSG_IMG_OPEN_FIRST,
-       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED, SMSG_NO_PASTE, SMSG_PASTED };
+       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED, SMSG_NO_PASTE, SMSG_PASTED,
+       SMSG_IMG_OOM };
 static struct {
     int type;
     int msg;
@@ -344,6 +349,7 @@ static const wchar_t *smsg_text(int msg)
     case SMSG_IMG_ENTER_KEY:  return S.imgEnterKey;
     case SMSG_IMG_SAVE_FAIL:  return S.imgSaveFail;
     case SMSG_IMG_SAVED:      return S.imgSaved;
+    case SMSG_IMG_OOM:        return S.imgOom;
     case SMSG_IMG_LOADED:     return S.imgLoaded;
     case SMSG_NO_PASTE:       return S.noPaste;
     case SMSG_PASTED:         return S.pasted;
@@ -479,7 +485,13 @@ static wchar_t *to_win_lf(const wchar_t *s)
     {
         if (s[i] == L'\n' && (i == 0 || s[i - 1] != L'\r'))
         {
-            if (j + 2 >= cap) { cap *= 2; out = (wchar_t *)realloc(out, (size_t)cap * sizeof(wchar_t)); }
+            if (j + 2 >= cap)
+            {
+                cap *= 2;
+                wchar_t *tmp = (wchar_t *)realloc(out, (size_t)cap * sizeof(wchar_t));
+                if (!tmp) { free(out); return NULL; }
+                out = tmp;
+            }
             out[j++] = L'\r'; out[j++] = L'\n';
         }
         else out[j++] = s[i];
@@ -513,6 +525,7 @@ static void t_transform(int encrypt)
     wchar_t *result = encrypt ? crypto_encrypt(text, key, rounds) : crypto_decrypt(text, key, rounds);
     QueryPerformanceCounter(&t1);
     wchar_t *win_text = to_win_lf(result);
+    if (!win_text) { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_OOM; set_status(S.imgOom); free(key); free(text); free(result); return; }
     set_text(t_output, win_text);
     double ms = (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart * 1000.0;
     wchar_t info[160];
@@ -529,16 +542,24 @@ static void t_copy(void)
 {
     wchar_t *out = get_text(t_output);
     if (!out || !out[0]) { g_st.type = ST_NONE; g_st.msg = SMSG_NO_COPY; set_status(S.noCopy); free(out); return; }
+    int ok = 0;
     if (OpenClipboard(g_hwndMain))
     {
         EmptyClipboard();
         size_t sz = (wcslen(out) + 1) * sizeof(wchar_t);
         HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, sz);
-        if (h) { wchar_t *d = (wchar_t *)GlobalLock(h); memcpy(d, out, sz); GlobalUnlock(h); SetClipboardData(CF_UNICODETEXT, h); }
+        if (h)
+        {
+            wchar_t *d = (wchar_t *)GlobalLock(h);
+            memcpy(d, out, sz);
+            GlobalUnlock(h);
+            ok = SetClipboardData(CF_UNICODETEXT, h) != NULL;
+            if (!ok) GlobalFree(h);  // 失败时释放，避免泄漏
+        }
         CloseClipboard();
     }
-    g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
-    set_status(S.copied);
+    g_st.type = ST_NONE; g_st.msg = ok ? SMSG_COPIED : SMSG_NO_COPY;
+    set_status(ok ? S.copied : S.noCopy);
     free(out);
 }
 
@@ -830,8 +851,9 @@ static uint8_t *i_read_file(const wchar_t *path, size_t *len_out)
     if (n <= 0) { fclose(f); return NULL; }
     uint8_t *buf = (uint8_t *)malloc((size_t)n);
     if (!buf) { fclose(f); return NULL; }
-    fread(buf, 1, (size_t)n, f);
+    size_t rd = fread(buf, 1, (size_t)n, f);
     fclose(f);
+    if (rd != (size_t)n) { free(buf); return NULL; }  // 读取被截断，视为失败
     *len_out = (size_t)n;
     return buf;
 }
@@ -900,9 +922,15 @@ static void i_transform(int enc)
     LARGE_INTEGER freq, t0, t1;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&t0);
-    if (enc) img_encrypt(i_pixels, key, rounds, i_w, i_h);
-    else img_decrypt(i_pixels, key, rounds, i_w, i_h);
+    int rc = enc ? img_encrypt(i_pixels, key, rounds, i_w, i_h)
+                 : img_decrypt(i_pixels, key, rounds, i_w, i_h);
     QueryPerformanceCounter(&t1);
+    if (rc != 0)  // 内存不足：像素未改动，不标记为已加密
+    {
+        g_st.type = ST_NONE; g_st.msg = SMSG_IMG_OOM; set_status(S.imgOom);
+        free(key);
+        return;
+    }
     double ms = (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart * 1000.0;
     wchar_t info[160];
     if (ms < 1000.0)
@@ -938,7 +966,14 @@ static void i_save_file(void)
     size_t plen = png_encode(i_pixels, i_w, i_h, png, cap);
     if (plen == 0) { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVE_FAIL; set_status(S.imgSaveFail); free(png); return; }
     FILE *f = _wfopen(file, L"wb");
-    if (f) { fwrite(png, 1, plen, f); fclose(f); g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVED; set_status(S.imgSaved); }
+    if (f)
+    {
+        size_t written = fwrite(png, 1, plen, f);
+        int ferr = ferror(f);
+        fclose(f);
+        if (written == plen && !ferr) { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVED; set_status(S.imgSaved); }
+        else { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVE_FAIL; set_status(S.imgSaveFail); }
+    }
     else { g_st.type = ST_NONE; g_st.msg = SMSG_IMG_SAVE_FAIL; set_status(S.imgSaveFail); }
     free(png);
 }
@@ -975,7 +1010,7 @@ static void i_copy(void)
         }
     }
     GlobalUnlock(h);
-    SetClipboardData(CF_DIB, h);
+    if (!SetClipboardData(CF_DIB, h)) { GlobalFree(h); CloseClipboard(); g_st.type = ST_NONE; g_st.msg = SMSG_NO_COPY; set_status(S.noCopy); return; }
     CloseClipboard();
     g_st.type = ST_NONE; g_st.msg = SMSG_COPIED;
     set_status(S.copied);

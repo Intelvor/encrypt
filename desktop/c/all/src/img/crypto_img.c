@@ -8,7 +8,6 @@
 #include <string.h>
 #include <windows.h>
 
-#define A 0x6D2B79F5u
 #define B 0x9E3779B9u
 
 static int32_t to_int32(double d)
@@ -223,7 +222,7 @@ static void round_transform(uint8_t *px, uint32_t *perm, int npx,
     }
 }
 
-static void img_transform(uint8_t *px, const wchar_t *key, int rounds, int w, int h, int enc)
+static int img_transform(uint8_t *px, const wchar_t *key, int rounds, int w, int h, int enc)
 {
     init_pool();
 
@@ -232,7 +231,7 @@ static void img_transform(uint8_t *px, const wchar_t *key, int rounds, int w, in
     uint32_t *perm = (uint32_t *)malloc((size_t)npx * sizeof(uint32_t));
     uint8_t *xv = (uint8_t *)malloc((size_t)nbyte);
     uint8_t *out = (uint8_t *)malloc((size_t)nbyte);
-    if (!perm || !xv || !out) { free(perm); free(xv); free(out); return; }
+    if (!perm || !xv || !out) { free(perm); free(xv); free(out); return -1; }
     uint32_t seed_base = hash_key(key);
 
     if (enc)
@@ -254,14 +253,15 @@ static void img_transform(uint8_t *px, const wchar_t *key, int rounds, int w, in
     free(perm);
     free(xv);
     free(out);
+    return 0;
 }
 
-void img_encrypt(uint8_t *px, const wchar_t *key, int rounds, int w, int h)
+int img_encrypt(uint8_t *px, const wchar_t *key, int rounds, int w, int h)
 {
-    img_transform(px, key, rounds, w, h, 1);
+    return img_transform(px, key, rounds, w, h, 1);
 }
 
-void img_decrypt(uint8_t *px, const wchar_t *key, int rounds, int w, int h)
+int img_decrypt(uint8_t *px, const wchar_t *key, int rounds, int w, int h)
 {
-    img_transform(px, key, rounds, w, h, 0);
+    return img_transform(px, key, rounds, w, h, 0);
 }

@@ -71,9 +71,10 @@ static uint32_t hash_key(const wchar_t *key)
 }
 
 // ====== 与 JS MakeShift 逐位一致 ======
-static uint32_t make_shift(const wchar_t *key, int pos)
+// seed = hash_key(key) 只依赖密钥，与位置无关；由调用方每轮缓存一次，
+// 避免逐码点重算 O(|key|) 的 FNV 哈希。
+static uint32_t make_shift(uint32_t seed, int pos)
 {
-    uint32_t seed = hash_key(key);
     // x = (uint)ToInt32(seed + (double)pos * 0x9E3779B9)
     uint32_t x = (uint32_t)to_int32((double)(int32_t)seed + (double)pos * 0x9E3779B9);
     // x = (uint)ToInt32((double)(int)(x ^ (x >> 16)) * 0x45d9f3b)
@@ -165,6 +166,7 @@ static wchar_t *encrypt_once(const wchar_t *text, const wchar_t *key)
     wchar_t *out = NULL;
     int cap = 0, len = 0;
     int text_len = (int)wcslen(text);
+    uint32_t seed = hash_key(key);
     int cp = 0;  // 码点序号（代理对算 1 个），保证加解密位置始终一致
     for (int i = 0; i < text_len; )
     {
@@ -177,7 +179,7 @@ static wchar_t *encrypt_once(const wchar_t *text, const wchar_t *key)
         }
         else
         {
-            int shift = (int)make_shift(key, cp);
+            int shift = (int)make_shift(seed, cp);
             append_cp(&out, &cap, &len, g_fwd_map[safe_shift(safe_pos, shift)]);
         }
         i += advance;
@@ -192,6 +194,7 @@ static wchar_t *decrypt_once(const wchar_t *cipher, const wchar_t *key)
     wchar_t *out = NULL;
     int cap = 0, len = 0;
     int cipher_len = (int)wcslen(cipher);
+    uint32_t seed = hash_key(key);
     int cp = 0;  // 码点序号（代理对算 1 个）
     for (int i = 0; i < cipher_len; )
     {
@@ -204,7 +207,7 @@ static wchar_t *decrypt_once(const wchar_t *cipher, const wchar_t *key)
         }
         else
         {
-            int shift = (int)make_shift(key, cp);
+            int shift = (int)make_shift(seed, cp);
             append_cp(&out, &cap, &len, g_fwd_map[safe_shift(safe_pos, -shift)]);
         }
         i += advance;
@@ -257,12 +260,7 @@ int crypto_selftest(void)
 {
     crypto_init();
 
-    struct { const wchar_t *pt; const wchar_t *key; int rounds; const wchar_t *ct; } cases[] = {
-        // 注：测试向量来自 C# Crypto.cs，C 里无法直接嵌 \uXXXX，所以用宽字符串字面量 + 构造
-        // 这里改用运行时构造
-    };
-
-    // 手动构造测试向量（直接用 C# 版的 ExpectedCt 值）
+    // 手动构造测试向量（直接用 C#/JS 版的 ExpectedCt 值）
     // Case 0: "Hello, 世界！" "mimo" 1
     // C# 输出: \u0157\u00C5\u011D\u0105\u00E1\u00D98\u4ED4\u7634\uFFA8
     {

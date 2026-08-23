@@ -65,6 +65,7 @@ typedef struct {
     const char *imgOpenFirst;
     const char *imgSaved;
     const char *imgSaveFail;
+    const char *imgOom;
     const char *langLabel;
 } LangStrings;
 
@@ -88,6 +89,7 @@ static const LangStrings g_strings[] = {
         "请先打开图片",
         "已保存",
         "保存失败",
+        "内存不足，图片未变化",
         "语言"
     },
     { // zh-TW
@@ -109,6 +111,7 @@ static const LangStrings g_strings[] = {
         "請先開啟圖片",
         "已儲存",
         "儲存失敗",
+        "記憶體不足，圖片未變化",
         "語言"
     },
     { // en
@@ -130,6 +133,7 @@ static const LangStrings g_strings[] = {
         "Please open an image first",
         "Saved",
         "Save failed",
+        "Out of memory, image unchanged",
         "Language"
     }
 };
@@ -143,11 +147,14 @@ static GtkNotebook *g_notebook;
 // 文本工具
 static GtkWidget *t_key, *t_round, *t_input, *t_output, *t_status;
 static GtkWidget *t_btn_enc, *t_btn_dec, *t_btn_copy, *t_btn_swap, *t_btn_clear, *t_btn_paste;
+static GtkWidget *t_lbl_key, *t_lbl_round, *t_lbl_in, *t_lbl_out;
 
 // 图片工具
 static GtkWidget *i_key, *i_round, *i_status, *i_image, *i_scroll;
 static GtkWidget *i_btn_open, *i_btn_enc, *i_btn_dec, *i_btn_save, *i_btn_copy, *i_btn_clear;
 static GtkWidget *i_chk_orig;
+static GtkWidget *i_lbl_key, *i_lbl_round;
+static GtkWidget *g_lbl_lang;
 static GdkPixbuf *i_pixbuf = NULL;
 static GdkPixbuf *i_orig_pixbuf = NULL;
 static int i_w = 0, i_h = 0;
@@ -158,7 +165,8 @@ static int i_show_orig = 0;
 enum { ST_NONE = 0, ST_READY, ST_TEXT_OP, ST_IMG_INIT, ST_IMG_LOADED, ST_IMG_OP };
 enum { SMSG_NONE = 0, SMSG_ENTER_KEY, SMSG_ENTER_TEXT, SMSG_NO_COPY, SMSG_COPIED,
        SMSG_NO_SWAP, SMSG_SWAPPED, SMSG_CLEARED, SMSG_IMG_NOT_VALID, SMSG_IMG_OPEN_FIRST,
-       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED, SMSG_NO_PASTE, SMSG_PASTED };
+       SMSG_IMG_ENTER_KEY, SMSG_IMG_SAVE_FAIL, SMSG_IMG_SAVED, SMSG_IMG_LOADED, SMSG_NO_PASTE, SMSG_PASTED,
+       SMSG_IMG_OOM };
 static struct {
     int type;
     int msg;
@@ -231,6 +239,7 @@ static const char *smsg_text(int msg)
     case SMSG_IMG_SAVE_FAIL:  return S.imgSaveFail;
     case SMSG_IMG_SAVED:      return S.imgSaved;
     case SMSG_IMG_LOADED:     return S.imgLoaded;
+    case SMSG_IMG_OOM:        return S.imgOom;
     case SMSG_NO_PASTE:       return S.noCopy;
     case SMSG_PASTED:         return S.paste;
     default:                  return S.ready;
@@ -591,12 +600,18 @@ static void on_image_transform(GtkWidget *widget, gpointer data)
 
     wchar_t *wkey = utf8_to_wchar(key_utf8);
     double t0 = get_time_ms();
-    if (enc)
-        img_encrypt(rgba, wkey, rounds, i_w, i_h);
-    else
-        img_decrypt(rgba, wkey, rounds, i_w, i_h);
+    int rc = enc ? img_encrypt(rgba, wkey, rounds, i_w, i_h)
+                 : img_decrypt(rgba, wkey, rounds, i_w, i_h);
     double dt = get_time_ms() - t0;
     free(wkey);
+
+    if (rc != 0)  // 内存不足：像素未改动，不标记为已加密
+    {
+        free(rgba);
+        g_st.type = ST_NONE; g_st.msg = SMSG_IMG_OOM;
+        set_status(i_status, S.imgOom);
+        return;
+    }
 
     // 更新像素
     for (int y = 0; y < i_h; y++) {
@@ -772,6 +787,15 @@ static void on_lang_changed(GtkComboBox *combo, gpointer data)
         gtk_button_set_label(GTK_BUTTON(i_btn_save), S.savePng);
         gtk_button_set_label(GTK_BUTTON(i_btn_copy), S.copy);
         gtk_button_set_label(GTK_BUTTON(i_btn_clear), S.clear);
+        // 字段标签
+        gtk_label_set_text(GTK_LABEL(t_lbl_key), S.key);
+        gtk_label_set_text(GTK_LABEL(t_lbl_round), S.rounds);
+        gtk_label_set_text(GTK_LABEL(t_lbl_in), S.inputText);
+        gtk_label_set_text(GTK_LABEL(t_lbl_out), S.outputResult);
+        gtk_label_set_text(GTK_LABEL(i_lbl_key), S.key);
+        gtk_label_set_text(GTK_LABEL(i_lbl_round), S.rounds);
+        gtk_label_set_text(GTK_LABEL(g_lbl_lang), S.langLabel);
+        gtk_button_set_label(GTK_BUTTON(i_chk_orig), S.showOrig);
         // 重建状态栏（保留当前操作状态，仅切换语言文本）
         rebuild_status();
     }
@@ -792,16 +816,16 @@ static GtkWidget* create_text_tab(void)
 
     // 密钥和轮次行
     GtkWidget *hbox1 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *lbl_key = gtk_label_new(S.key);
+    t_lbl_key = gtk_label_new(S.key);
     t_key = gtk_entry_new();
     gtk_entry_set_text(GTK_ENTRY(t_key), "mimo");
     gtk_entry_set_width_chars(GTK_ENTRY(t_key), 20);
-    GtkWidget *lbl_round = gtk_label_new(S.rounds);
+    t_lbl_round = gtk_label_new(S.rounds);
     t_round = gtk_spin_button_new_with_range(1, 99, 1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(t_round), 1);
-    gtk_box_pack_start(GTK_BOX(hbox1), lbl_key, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox1), t_lbl_key, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox1), t_key, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(hbox1), lbl_round, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox1), t_lbl_round, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox1), t_round, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), hbox1, FALSE, FALSE, 0);
 
@@ -822,9 +846,9 @@ static GtkWidget* create_text_tab(void)
     gtk_box_pack_start(GTK_BOX(vbox), hbox2, FALSE, FALSE, 0);
 
     // 输入文本
-    GtkWidget *lbl_in = gtk_label_new(S.inputText);
-    gtk_label_set_xalign(GTK_LABEL(lbl_in), 0);
-    gtk_box_pack_start(GTK_BOX(vbox), lbl_in, FALSE, FALSE, 0);
+    t_lbl_in = gtk_label_new(S.inputText);
+    gtk_label_set_xalign(GTK_LABEL(t_lbl_in), 0);
+    gtk_box_pack_start(GTK_BOX(vbox), t_lbl_in, FALSE, FALSE, 0);
     t_input = gtk_text_view_new();
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(t_input), GTK_WRAP_WORD_CHAR);
     GtkWidget *scroll_in = gtk_scrolled_window_new(NULL, NULL);
@@ -834,9 +858,9 @@ static GtkWidget* create_text_tab(void)
     gtk_box_pack_start(GTK_BOX(vbox), scroll_in, TRUE, TRUE, 0);
 
     // 输出文本
-    GtkWidget *lbl_out = gtk_label_new(S.outputResult);
-    gtk_label_set_xalign(GTK_LABEL(lbl_out), 0);
-    gtk_box_pack_start(GTK_BOX(vbox), lbl_out, FALSE, FALSE, 0);
+    t_lbl_out = gtk_label_new(S.outputResult);
+    gtk_label_set_xalign(GTK_LABEL(t_lbl_out), 0);
+    gtk_box_pack_start(GTK_BOX(vbox), t_lbl_out, FALSE, FALSE, 0);
     t_output = gtk_text_view_new();
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(t_output), GTK_WRAP_WORD_CHAR);
     gtk_text_view_set_editable(GTK_TEXT_VIEW(t_output), FALSE);
@@ -885,17 +909,17 @@ static GtkWidget* create_image_tab(void)
 
     // 密钥和轮次
     GtkWidget *hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *lbl_key = gtk_label_new(S.key);
+    i_lbl_key = gtk_label_new(S.key);
     i_key = gtk_entry_new();
     gtk_entry_set_text(GTK_ENTRY(i_key), "mimo");
     gtk_entry_set_width_chars(GTK_ENTRY(i_key), 20);
-    GtkWidget *lbl_round = gtk_label_new(S.rounds);
+    i_lbl_round = gtk_label_new(S.rounds);
     i_round = gtk_spin_button_new_with_range(1, 99, 1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(i_round), 1);
     i_chk_orig = gtk_check_button_new_with_label(S.showOrig);
-    gtk_box_pack_start(GTK_BOX(hbox2), lbl_key, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox2), i_lbl_key, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox2), i_key, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(hbox2), lbl_round, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox2), i_lbl_round, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox2), i_round, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox2), i_chk_orig, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), hbox2, FALSE, FALSE, 0);
@@ -958,14 +982,14 @@ int main(int argc, char *argv[])
 
     // 语言选择
     GtkWidget *hbox_lang = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    GtkWidget *lbl_lang = gtk_label_new(S.langLabel);
+    g_lbl_lang = gtk_label_new(S.langLabel);
     GtkWidget *lang_combo = gtk_combo_box_text_new();
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(lang_combo), "简体中文");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(lang_combo), "繁體中文");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(lang_combo), "English");
     gtk_combo_box_set_active(GTK_COMBO_BOX(lang_combo), g_lang);
     gtk_box_pack_end(GTK_BOX(hbox_lang), lang_combo, FALSE, FALSE, 0);
-    gtk_box_pack_end(GTK_BOX(hbox_lang), lbl_lang, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(hbox_lang), g_lbl_lang, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), hbox_lang, FALSE, FALSE, 4);
     g_signal_connect(lang_combo, "changed", G_CALLBACK(on_lang_changed), NULL);
 
