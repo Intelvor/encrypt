@@ -31,6 +31,12 @@ jobs:
         run: |
           echo "registry=https://registry.npmjs.org/" > .npmrc
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> .npmrc
+          VERSION=$(node -p "require('./package.json').version")
+          # 幂等：版本已存在则跳过（npm 不允许覆盖已发布版本）
+          if npm view "crypt-lite@${VERSION}" version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
+            echo "Version ${VERSION} already published on npmjs.com, skipping."
+            exit 0
+          fi
           npm publish --access public
 
       # ---- 2. Publish to GitHub Packages (@Intelvor/crypt-lite) ----
@@ -43,4 +49,10 @@ jobs:
           node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.name='@Intelvor/crypt-lite';p.publishConfig={registry:'https://npm.pkg.github.com'};fs.writeFileSync('package.json',JSON.stringify(p,null,2));"
           echo "registry=https://npm.pkg.github.com/" > .npmrc
           echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> .npmrc
+          VERSION=$(node -p "require('./package.json').version")
+          # 幂等：版本已存在则跳过（npm 不允许覆盖已发布版本）
+          if npm view "@Intelvor/crypt-lite@${VERSION}" version >/dev/null 2>&1; then
+            echo "Version ${VERSION} already published on GitHub Packages, skipping."
+            exit 0
+          fi
           npm publish --access public
