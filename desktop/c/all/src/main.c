@@ -21,6 +21,15 @@ static const GUID my_IID_IDropSource = {0x00000121,0x0000,0x0000,{0xC0,0x00,0x00
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
 #endif
+#ifndef WM_DWMCOLORIZATIONCOLORCHANGED
+#define WM_DWMCOLORIZATIONCOLORCHANGED 0x0320
+#endif
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+#ifndef EM_SETBKGNDCOLOR
+#define EM_SETBKGNDCOLOR (WM_USER + 236)
+#endif
 #ifndef ICC_UPDOWN_CLASSES
 #define ICC_UPDOWN_CLASSES 0x00000400
 #endif
@@ -72,6 +81,10 @@ typedef struct {
     const wchar_t *langLabel;
     const wchar_t *fileFilter;
     const wchar_t *pngFilter;
+    const wchar_t *themeLabel;
+    const wchar_t *themeSystem;
+    const wchar_t *themeLight;
+    const wchar_t *themeDark;
 } LangStrings;
 
 static const LangStrings g_strings[] = {
@@ -114,7 +127,11 @@ static const LangStrings g_strings[] = {
         L"\u5185\u5b58\u4e0d\u8db3\uff0c\u56fe\u7247\u672a\u53d8\u5316",
         L"\u8bed\u8a00",
         L"\u56fe\u7247\u6587\u4ef6 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG \u56fe\u7247 (*.png)\0*.png\0JPEG \u56fe\u7247 (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP \u56fe\u7247 (*.bmp)\0*.bmp\0\u6240\u6709\u6587\u4ef6 (*.*)\0*.*\0",
-        L"PNG \u56fe\u7247 (*.png)\0*.png\0"
+        L"PNG \u56fe\u7247 (*.png)\0*.png\0",
+        L"\u4e3b\u9898",
+        L"\u8ddf\u968f\u7cfb\u7edf",
+        L"\u6d45\u8272",
+        L"\u6df1\u8272"
     },
     {
         L"\u52a0\u89e3\u5bc6\u5de5\u5177",
@@ -155,7 +172,11 @@ static const LangStrings g_strings[] = {
         L"\u8a18\u61b6\u9ad4\u4e0d\u8db3\uff0c\u5716\u7247\u672a\u8b8a\u5316",
         L"\u8a9e\u8a00",
         L"\u5716\u7247\u6587\u4ef6 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG \u5716\u7247 (*.png)\0*.png\0JPEG \u5716\u7247 (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP \u5716\u7247 (*.bmp)\0*.bmp\0\u6240\u6709\u6587\u4ef6 (*.*)\0*.*\0",
-        L"PNG \u5716\u7247 (*.png)\0*.png\0"
+        L"PNG \u5716\u7247 (*.png)\0*.png\0",
+        L"\u4e3b\u984c",
+        L"\u8ddf\u96a8\u7cfb\u7d71",
+        L"\u6dfa\u8272",
+        L"\u6df1\u8272"
     },
     {
         L"Encrypt & Decrypt",
@@ -196,7 +217,11 @@ static const LangStrings g_strings[] = {
         L"Out of memory, image unchanged",
         L"Language",
         L"Image files (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0PNG images (*.png)\0*.png\0JPEG images (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP images (*.bmp)\0*.bmp\0All files (*.*)\0*.*\0",
-        L"PNG images (*.png)\0*.png\0"
+        L"PNG images (*.png)\0*.png\0",
+        L"Theme",
+        L"System",
+        L"Light",
+        L"Dark"
     }
 };
 
@@ -250,10 +275,139 @@ static void save_lang(void)
     }
 }
 
+// ====== 主题（跟随系统 / 浅色 / 深色） ======
+enum { THEME_SYSTEM = 0, THEME_LIGHT = 1, THEME_DARK = 2 };
+static int g_theme = THEME_SYSTEM;
+static int g_is_dark = 0;          // 解析后的实际主题
+static HWND g_themeCombo, g_themeLabel;
+static HBRUSH g_brushWindow = NULL;
+static HBRUSH g_brushEdit = NULL;
+static HBRUSH g_brushStatic = NULL;
+static HBRUSH g_brushBtn = NULL;
+static HBRUSH g_brushPic = NULL;
+
+// 动态加载的系统主题 API（缺失时优雅降级）
+typedef HRESULT (WINAPI *DwmSetWindowAttribute_t)(HWND, DWORD, LPCVOID, DWORD);
+typedef HRESULT (WINAPI *SetWindowTheme_t)(HWND, LPCWSTR, LPCWSTR);
+typedef HRESULT (WINAPI *SetPreferredAppMode_t)(int);
+typedef void (WINAPI *FlushMenuThemes_t)(void);
+typedef BOOL (WINAPI *ShouldAppsUseDarkMode_t)(void);
+static DwmSetWindowAttribute_t pDwmSetWindowAttribute = NULL;
+static SetWindowTheme_t pSetWindowTheme = NULL;
+static SetPreferredAppMode_t pSetPreferredAppMode = NULL;
+static FlushMenuThemes_t pFlushMenuThemes = NULL;
+static ShouldAppsUseDarkMode_t pShouldAppsUseDarkMode = NULL;
+
+// 与 web 版深色调对齐
+#define DARK_WIN_BG   RGB(12, 14, 20)
+#define DARK_EDIT_BG  RGB(26, 29, 40)
+#define DARK_PIC_BG   RGB(26, 29, 40)
+#define DARK_TEXT     RGB(226, 228, 234)
+#define DARK_TEXT_DIM RGB(107, 112, 128)
+#define DARK_BTN_BG   RGB(32, 36, 48)
+
+static void load_theme_apis(void)
+{
+    HMODULE hUx = LoadLibraryW(L"uxtheme.dll");
+    if (hUx)
+    {
+        pSetWindowTheme = (SetWindowTheme_t)GetProcAddress(hUx, "SetWindowTheme");
+        pSetPreferredAppMode = (SetPreferredAppMode_t)GetProcAddress(hUx, (LPCSTR)135);
+        pFlushMenuThemes = (FlushMenuThemes_t)GetProcAddress(hUx, (LPCSTR)136);
+        pShouldAppsUseDarkMode = (ShouldAppsUseDarkMode_t)GetProcAddress(hUx, (LPCSTR)132);
+    }
+    HMODULE hDwm = LoadLibraryW(L"dwmapi.dll");
+    if (hDwm)
+        pDwmSetWindowAttribute = (DwmSetWindowAttribute_t)GetProcAddress(hDwm, "DwmSetWindowAttribute");
+}
+
+static int system_apps_use_dark(void)
+{
+    HKEY hKey;
+    DWORD val = 1, sz = sizeof(val);  // 缺省按浅色
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        if (RegQueryValueExW(hKey, L"AppsUseLightTheme", NULL, NULL, (LPBYTE)&val, &sz) == ERROR_SUCCESS)
+        {
+            RegCloseKey(hKey);
+            return val == 0;
+        }
+        RegCloseKey(hKey);
+    }
+    return 0;
+}
+
+static void load_theme(void)
+{
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\EncryptTool", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        DWORD val = 0, sz = sizeof(val);
+        if (RegQueryValueExW(hKey, L"Theme", NULL, NULL, (LPBYTE)&val, &sz) == ERROR_SUCCESS && val <= THEME_DARK)
+            g_theme = (int)val;
+        RegCloseKey(hKey);
+    }
+}
+
+static void save_theme(void)
+{
+    HKEY hKey;
+    DWORD disp;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\EncryptTool", 0, NULL, 0, KEY_WRITE, NULL, &hKey, &disp) == ERROR_SUCCESS)
+    {
+        DWORD val = (DWORD)g_theme;
+        RegSetValueExW(hKey, L"Theme", 0, REG_DWORD, (LPBYTE)&val, sizeof(val));
+        RegCloseKey(hKey);
+    }
+}
+
+static void free_theme_brushes(void)
+{
+    if (g_brushWindow) { DeleteObject(g_brushWindow); g_brushWindow = NULL; }
+    if (g_brushEdit)   { DeleteObject(g_brushEdit);   g_brushEdit = NULL; }
+    if (g_brushStatic) { DeleteObject(g_brushStatic); g_brushStatic = NULL; }
+    if (g_brushBtn)    { DeleteObject(g_brushBtn);    g_brushBtn = NULL; }
+    if (g_brushPic)    { DeleteObject(g_brushPic);    g_brushPic = NULL; }
+}
+
+static void make_theme_brushes(void)
+{
+    free_theme_brushes();
+    if (!g_is_dark) return;
+    g_brushWindow = CreateSolidBrush(DARK_WIN_BG);
+    g_brushEdit   = CreateSolidBrush(DARK_EDIT_BG);
+    g_brushStatic = CreateSolidBrush(DARK_WIN_BG);
+    g_brushBtn    = CreateSolidBrush(DARK_BTN_BG);
+    g_brushPic    = CreateSolidBrush(DARK_PIC_BG);
+}
+
+static void set_ctrl_dark_theme(HWND h)
+{
+    if (!h || !pSetWindowTheme) return;
+    if (g_is_dark)
+        pSetWindowTheme(h, L"DarkMode_Explorer", NULL);
+    else
+        pSetWindowTheme(h, L"Explorer", NULL);
+}
+
+static void apply_dark_titlebar(HWND hwnd)
+{
+    if (!hwnd || !pDwmSetWindowAttribute) return;
+    BOOL dark = g_is_dark ? TRUE : FALSE;
+    if (pDwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark)) != S_OK)
+        pDwmSetWindowAttribute(hwnd, 19, &dark, sizeof(dark));  // Win10 1809 备用属性
+}
+
+static void apply_theme_to_controls(void);
+static void apply_theme(void);
+
 // ====== Tab 控件 ID ======
 #define ID_TAB_TEXT     1001
 #define ID_TAB_IMAGE    1002
 #define ID_LANG_COMBO   1003
+#define ID_THEME_COMBO  1004
 
 // ====== 文本工具控件 ID ======
 #define ID_T_ENC     2001
@@ -317,6 +471,412 @@ static int i_dirty = 0;
 static int i_show_orig = 0;
 
 static void set_text(HWND h, const wchar_t *s);
+
+static void apply_theme_to_controls(void)
+{
+    HWND kids[] = {
+        g_tabText, g_tabImage, g_langLabel, g_langCombo,
+        g_themeLabel, g_themeCombo,
+        t_lblIn, t_lblOut, t_lblKey, t_lblRound,
+        t_key, t_round, t_roundud, t_input, t_output, t_status, t_split,
+        i_open, i_enc, i_dec, i_save, i_btnCopy, i_btnClear,
+        i_lblKey, i_key, i_lblRound, i_round, i_roundud,
+        i_chk, i_pic, i_status, i_zoom
+    };
+    for (int i = 0; i < (int)(sizeof(kids) / sizeof(kids[0])); i++)
+        set_ctrl_dark_theme(kids[i]);
+    for (int i = 0; i < 6; i++) set_ctrl_dark_theme(t_btns[i]);
+}
+
+static void apply_theme(void)
+{
+    if (g_theme == THEME_DARK) g_is_dark = 1;
+    else if (g_theme == THEME_LIGHT) g_is_dark = 0;
+    else g_is_dark = system_apps_use_dark();
+
+    if (pSetPreferredAppMode)
+    {
+        // 0=Default 1=AllowDark 2=ForceDark 3=ForceLight
+        pSetPreferredAppMode(g_is_dark ? 2 : 3);
+        if (pFlushMenuThemes) pFlushMenuThemes();
+    }
+
+    make_theme_brushes();
+    apply_dark_titlebar(g_hwndMain);
+    apply_theme_to_controls();
+
+    // 编辑框（含只读）显式设底色，避免仅靠 CTLCOLOR 时灰底残留
+    {
+        COLORREF edit_bg = g_is_dark ? DARK_EDIT_BG : GetSysColor(COLOR_WINDOW);
+        HWND edits[] = { t_key, t_round, t_input, t_output, i_key, i_round };
+        for (int i = 0; i < (int)(sizeof(edits) / sizeof(edits[0])); i++)
+            if (edits[i]) SendMessageW(edits[i], EM_SETBKGNDCOLOR, 0, (LPARAM)edit_bg);
+    }
+
+    if (g_hwndMain)
+        RedrawWindow(g_hwndMain, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE | RDW_UPDATENOW);
+    if (i_pic) InvalidateRect(i_pic, NULL, TRUE);
+}
+
+// ====== Owner-draw 控件绘制（按钮 / 复选框 / 下拉框 / 数字钮） ======
+#define DARK_BTN_BG      RGB(32, 36, 48)
+#define DARK_BTN_HOVER   RGB(44, 50, 66)
+#define DARK_BTN_PRESS   RGB(22, 26, 36)
+#define DARK_BTN_BORDER  RGB(70, 76, 92)
+#define DARK_BTN_DIS_BG  RGB(24, 28, 38)
+#define DARK_BTN_DIS_TXT RGB(107, 112, 128)
+#define DARK_TAB_SEL_BG  RGB(40, 52, 82)
+#define DARK_TAB_SEL_BR  RGB(120, 160, 255)
+#define DARK_ACCENT      RGB(120, 160, 255)
+#define DARK_COMBO_BTN   RGB(32, 36, 48)
+
+static HWND g_hotBtn = NULL;
+
+static int ctrl_is_active_tab(UINT id)
+{
+    return (id == ID_TAB_TEXT && g_active_tab == 0) ||
+           (id == ID_TAB_IMAGE && g_active_tab == 1);
+}
+
+static void draw_round_fill(HDC hdc, RECT rc, COLORREF fill, COLORREF border, int radius)
+{
+    HBRUSH br = CreateSolidBrush(fill);
+    HPEN pen = CreatePen(PS_SOLID, 1, border);
+    HGDIOBJ oldb = SelectObject(hdc, br);
+    HGDIOBJ oldp = SelectObject(hdc, pen);
+    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, radius, radius);
+    SelectObject(hdc, oldb);
+    SelectObject(hdc, oldp);
+    DeleteObject(br);
+    DeleteObject(pen);
+}
+
+static void draw_owner_button(const DRAWITEMSTRUCT *dis)
+{
+    HDC hdc = dis->hDC;
+    RECT rc = dis->rcItem;
+    UINT id = dis->CtlID;
+    int disabled = (dis->itemState & ODS_DISABLED) != 0;
+    int pressed = (dis->itemState & ODS_SELECTED) != 0;
+    int hot = (g_hotBtn == dis->hwndItem) || (dis->itemState & ODS_HOTLIGHT) != 0;
+    int is_chk = (id == ID_I_CHKORIG);
+    int is_tab = (id == ID_TAB_TEXT || id == ID_TAB_IMAGE);
+    int tab_active = is_tab && ctrl_is_active_tab(id);
+
+    COLORREF face, border, text;
+    if (g_is_dark)
+    {
+        if (is_tab && tab_active)
+        {
+            face = pressed ? RGB(30, 40, 66) : DARK_TAB_SEL_BG;
+            border = DARK_TAB_SEL_BR;
+            text = DARK_TAB_SEL_BR;
+        }
+        else if (disabled)
+        {
+            face = DARK_BTN_DIS_BG;
+            border = RGB(50, 54, 66);
+            text = DARK_BTN_DIS_TXT;
+        }
+        else if (pressed)
+        {
+            face = DARK_BTN_PRESS;
+            border = DARK_ACCENT;
+            text = DARK_TEXT;
+        }
+        else if (hot)
+        {
+            face = DARK_BTN_HOVER;
+            border = DARK_TAB_SEL_BR;
+            text = DARK_TEXT;
+        }
+        else
+        {
+            face = DARK_BTN_BG;
+            border = DARK_BTN_BORDER;
+            text = DARK_TEXT;
+        }
+    }
+    else
+    {
+        if (is_tab && tab_active)
+        {
+            face = RGB(229, 241, 255);
+            border = GetSysColor(COLOR_HIGHLIGHT);
+            text = GetSysColor(COLOR_HIGHLIGHT);
+        }
+        else if (disabled)
+        {
+            face = GetSysColor(COLOR_BTNFACE);
+            border = GetSysColor(COLOR_BTNSHADOW);
+            text = GetSysColor(COLOR_GRAYTEXT);
+        }
+        else if (pressed)
+        {
+            face = GetSysColor(COLOR_BTNSHADOW);
+            border = GetSysColor(COLOR_BTNSHADOW);
+            text = GetSysColor(COLOR_BTNTEXT);
+        }
+        else if (hot)
+        {
+            face = RGB(229, 231, 235);
+            border = GetSysColor(COLOR_HIGHLIGHT);
+            text = GetSysColor(COLOR_BTNTEXT);
+        }
+        else
+        {
+            face = GetSysColor(COLOR_BTNFACE);
+            border = GetSysColor(COLOR_BTNSHADOW);
+            text = GetSysColor(COLOR_BTNTEXT);
+        }
+    }
+
+    wchar_t label[128] = L"";
+    GetWindowTextW(dis->hwndItem, label, 128);
+    HFONT font = (HFONT)SendMessageW(dis->hwndItem, WM_GETFONT, 0, 0);
+    HFONT oldf = NULL;
+    if (font) oldf = (HFONT)SelectObject(hdc, font);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, text);
+
+    if (is_chk)
+    {
+        int checked = (SendMessageW(dis->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED);
+        HBRUSH bgb = CreateSolidBrush(g_is_dark ? DARK_WIN_BG : GetSysColor(COLOR_WINDOW));
+        FillRect(hdc, &rc, bgb);
+        DeleteObject(bgb);
+        int box = px(14);
+        int cy = (rc.top + rc.bottom) / 2;
+        RECT bx = { rc.left + px(2), cy - box / 2, rc.left + px(2) + box, cy - box / 2 + box };
+        COLORREF cface = g_is_dark ? (hot ? DARK_BTN_HOVER : DARK_EDIT_BG) : GetSysColor(COLOR_WINDOW);
+        COLORREF cbor = g_is_dark ? (checked ? DARK_ACCENT : DARK_BTN_BORDER) : GetSysColor(COLOR_BTNSHADOW);
+        COLORREF cmark = g_is_dark ? DARK_ACCENT : GetSysColor(COLOR_HIGHLIGHT);
+        HBRUSH bbr = CreateSolidBrush(cface);
+        FillRect(hdc, &bx, bbr);
+        DeleteObject(bbr);
+        HPEN pen = CreatePen(PS_SOLID, 1, cbor);
+        HGDIOBJ op = SelectObject(hdc, pen);
+        HGDIOBJ ob = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+        Rectangle(hdc, bx.left, bx.top, bx.right, bx.bottom);
+        SelectObject(hdc, ob);
+        SelectObject(hdc, op);
+        DeleteObject(pen);
+        if (checked)
+        {
+            HPEN mp = CreatePen(PS_SOLID, px(2), cmark);
+            HGDIOBJ omp = SelectObject(hdc, mp);
+            int x0 = bx.left + px(3);
+            MoveToEx(hdc, x0, cy, NULL);
+            LineTo(hdc, x0 + px(3), cy + px(4));
+            LineTo(hdc, x0 + px(8), cy - px(4));
+            SelectObject(hdc, omp);
+            DeleteObject(mp);
+        }
+        RECT tr = { bx.right + px(6), rc.top, rc.right - px(2), rc.bottom };
+        DrawTextW(hdc, label, -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    }
+    else
+    {
+        if (is_tab && tab_active && g_is_dark)
+        {
+            RECT bg = rc;
+            InflateRect(&bg, px(2), px(1));
+            HBRUSH wbr = CreateSolidBrush(DARK_WIN_BG);
+            FillRect(hdc, &bg, wbr);
+            DeleteObject(wbr);
+        }
+        draw_round_fill(hdc, rc, face, border, px(4));
+        RECT tr = rc;
+        if (pressed) OffsetRect(&tr, 1, 1);
+        DrawTextW(hdc, label, -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    }
+
+    if (oldf) SelectObject(hdc, oldf);
+}
+
+static LRESULT CALLBACK DarkComboSubProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                         UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+    (void)dwRefData;
+    if (msg == WM_NCDESTROY)
+    {
+        RemoveWindowSubclass(hwnd, DarkComboSubProc, uIdSubclass);
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+    if (!g_is_dark)
+        return DefSubclassProc(hwnd, msg, wp, lp);
+
+    switch (msg)
+    {
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT:
+        {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, DARK_TEXT);
+            SetBkColor(hdc, DARK_EDIT_BG);
+            SetBkMode(hdc, OPAQUE);
+            return (LRESULT)(g_brushEdit ? g_brushEdit : GetSysColorBrush(COLOR_WINDOW));
+        }
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            RECT rc; GetClientRect(hwnd, &rc);
+            int sel_h = (int)SendMessageW(hwnd, CB_GETITEMHEIGHT, (WPARAM)-1, 0);
+            if (sel_h > 0 && sel_h < rc.bottom) rc.bottom = sel_h;
+
+            HBRUSH bg = CreateSolidBrush(DARK_EDIT_BG);
+            FillRect(hdc, &rc, bg);
+            DeleteObject(bg);
+
+            int btn_w = px(20);
+            RECT ar = { rc.right - btn_w, rc.top, rc.right, rc.bottom };
+            HBRUSH ab = CreateSolidBrush(DARK_COMBO_BTN);
+            FillRect(hdc, &ar, ab);
+            DeleteObject(ab);
+
+            HPEN pen = CreatePen(PS_SOLID, 1, DARK_BTN_BORDER);
+            HGDIOBJ oldp = SelectObject(hdc, pen);
+            HGDIOBJ oldb = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+            Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
+            MoveToEx(hdc, ar.left, rc.top, NULL);
+            LineTo(hdc, ar.left, rc.bottom);
+            SelectObject(hdc, oldb);
+            SelectObject(hdc, oldp);
+            DeleteObject(pen);
+
+            int cx = (ar.left + ar.right) / 2;
+            int cy = (ar.top + ar.bottom) / 2;
+            HPEN ap = CreatePen(PS_SOLID, px(1), DARK_TEXT);
+            oldp = SelectObject(hdc, ap);
+            MoveToEx(hdc, cx - px(4), cy - px(2), NULL);
+            LineTo(hdc, cx, cy + px(3));
+            LineTo(hdc, cx + px(4), cy - px(2));
+            SelectObject(hdc, oldp);
+            DeleteObject(ap);
+
+            int sel = (int)SendMessageW(hwnd, CB_GETCURSEL, 0, 0);
+            wchar_t buf[128] = L"";
+            if (sel >= 0) SendMessageW(hwnd, CB_GETLBTEXT, (WPARAM)sel, (LPARAM)buf);
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, DARK_TEXT);
+            HFONT font = (HFONT)SendMessageW(hwnd, WM_GETFONT, 0, 0);
+            HFONT oldf = font ? (HFONT)SelectObject(hdc, font) : NULL;
+            RECT tr = { rc.left + px(6), rc.top, ar.left - px(4), rc.bottom };
+            DrawTextW(hdc, buf, -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            if (oldf) SelectObject(hdc, oldf);
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static LRESULT CALLBACK DarkUpDownSubProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                          UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+    (void)dwRefData;
+    if (msg == WM_NCDESTROY)
+    {
+        RemoveWindowSubclass(hwnd, DarkUpDownSubProc, uIdSubclass);
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+    if (!g_is_dark)
+        return DefSubclassProc(hwnd, msg, wp, lp);
+
+    switch (msg)
+    {
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            RECT rc; GetClientRect(hwnd, &rc);
+            HBRUSH bg = CreateSolidBrush(DARK_BTN_BG);
+            FillRect(hdc, &rc, bg);
+            DeleteObject(bg);
+
+            int mid = (rc.top + rc.bottom) / 2;
+            HPEN pen = CreatePen(PS_SOLID, 1, DARK_BTN_BORDER);
+            HGDIOBJ oldp = SelectObject(hdc, pen);
+            Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
+            MoveToEx(hdc, rc.left, mid, NULL);
+            LineTo(hdc, rc.right, mid);
+
+            int cx = (rc.left + rc.right) / 2;
+            HPEN ap = CreatePen(PS_SOLID, px(1), DARK_TEXT);
+            SelectObject(hdc, ap);
+            MoveToEx(hdc, cx - px(3), mid - px(4), NULL);
+            LineTo(hdc, cx, mid - px(7));
+            LineTo(hdc, cx + px(3), mid - px(4));
+            MoveToEx(hdc, cx - px(3), mid + px(4), NULL);
+            LineTo(hdc, cx, mid + px(7));
+            LineTo(hdc, cx + px(3), mid + px(4));
+            SelectObject(hdc, oldp);
+            DeleteObject(pen);
+            DeleteObject(ap);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static LRESULT CALLBACK OwnerBtnSubProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                        UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+    (void)dwRefData; (void)wp; (void)lp;
+    switch (msg)
+    {
+    case WM_MOUSEMOVE:
+        if (g_hotBtn != hwnd)
+        {
+            HWND prev = g_hotBtn;
+            g_hotBtn = hwnd;
+            if (prev) InvalidateRect(prev, NULL, TRUE);
+            InvalidateRect(hwnd, NULL, TRUE);
+            TRACKMOUSEEVENT tme;
+            tme.cbSize = sizeof(tme);
+            tme.dwFlags = TME_LEAVE;
+            tme.hwndTrack = hwnd;
+            tme.dwHoverTime = 0;
+            TrackMouseEvent(&tme);
+        }
+        break;
+    case WM_MOUSELEAVE:
+        if (g_hotBtn == hwnd) g_hotBtn = NULL;
+        InvalidateRect(hwnd, NULL, TRUE);
+        break;
+    case WM_NCDESTROY:
+        if (g_hotBtn == hwnd) g_hotBtn = NULL;
+        RemoveWindowSubclass(hwnd, OwnerBtnSubProc, uIdSubclass);
+        break;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static void subclass_theme_controls(void)
+{
+    HWND btns[14];
+    int n = 0;
+    btns[n++] = g_tabText;
+    btns[n++] = g_tabImage;
+    for (int i = 0; i < 6; i++) btns[n++] = t_btns[i];
+    btns[n++] = i_open; btns[n++] = i_enc; btns[n++] = i_dec;
+    btns[n++] = i_save; btns[n++] = i_btnCopy; btns[n++] = i_btnClear;
+    for (int i = 0; i < n; i++)
+        if (btns[i]) SetWindowSubclass(btns[i], OwnerBtnSubProc, 1, 0);
+    if (i_chk) SetWindowSubclass(i_chk, OwnerBtnSubProc, 2, 0);
+    if (g_themeCombo) SetWindowSubclass(g_themeCombo, DarkComboSubProc, 1, 0);
+    if (g_langCombo) SetWindowSubclass(g_langCombo, DarkComboSubProc, 2, 0);
+    if (t_roundud) SetWindowSubclass(t_roundud, DarkUpDownSubProc, 1, 0);
+    if (i_roundud) SetWindowSubclass(i_roundud, DarkUpDownSubProc, 2, 0);
+}
 
 // ====== 状态缓存（语言切换时重建） ======
 enum { ST_NONE = 0, ST_READY, ST_TEXT_OP, ST_IMG_INIT, ST_IMG_LOADED, ST_IMG_OP };
@@ -831,7 +1391,7 @@ static void create_text_controls(HWND hwnd)
     int ids[] = { ID_T_ENC, ID_T_DEC, ID_T_COPY, ID_T_SWAP, ID_T_CLEAR, ID_T_PASTE };
     const wchar_t *txts[] = { S.encrypt, S.decrypt, S.copy, S.swap, S.clear, S.paste };
     for (int i = 0; i < 6; i++)
-        t_btns[i] = CreateWindowExW(0, L"BUTTON", txts[i], WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, px(T_BTN_W), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ids[i], mod, NULL);
+        t_btns[i] = CreateWindowExW(0, L"BUTTON", txts[i], WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 0, 0, px(T_BTN_W), px(T_BTN_H), hwnd, (HMENU)(LONG_PTR)ids[i], mod, NULL);
 
     t_input = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, 0, 0, px(100), px(100), hwnd, (HMENU)(LONG_PTR)ID_T_INPUT, mod, NULL);
     t_split = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 0, 0, px(100), px(4), hwnd, (HMENU)(LONG_PTR)ID_T_SPLIT, mod, NULL);
@@ -875,6 +1435,7 @@ static int i_load(const wchar_t *path)
     i_w = w; i_h = h;
     i_dirty = 0; i_show_orig = 0;
     SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
+    if (i_chk) InvalidateRect(i_chk, NULL, TRUE);
     double ms = (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart * 1000.0;
     wchar_t info[160];
     if (ms < 1000.0)
@@ -942,6 +1503,7 @@ static void i_transform(int enc)
     g_st.is_enc = enc; g_st.rounds = rounds; g_st.ms = ms; g_st.w = i_w; g_st.h = i_h;
     i_dirty = 1; i_show_orig = 0;
     SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
+    if (i_chk) InvalidateRect(i_chk, NULL, TRUE);
     EnableWindow(i_save, TRUE);
     InvalidateRect(i_pic, NULL, TRUE);
     free(key);
@@ -1023,6 +1585,7 @@ static void i_clear(void)
     i_w = 0; i_h = 0;
     i_dirty = 0; i_show_orig = 0;
     SendMessageW(i_chk, BM_SETCHECK, BST_UNCHECKED, 0);
+    if (i_chk) InvalidateRect(i_chk, NULL, TRUE);
     EnableWindow(i_enc, FALSE);
     EnableWindow(i_dec, FALSE);
     EnableWindow(i_save, FALSE);
@@ -1036,10 +1599,10 @@ static void i_draw(HWND hwnd, HDC hdc)
 {
     RECT rc;
     GetClientRect(hwnd, &rc);
-    FillRect(hdc, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
+    FillRect(hdc, &rc, g_is_dark ? g_brushPic : (HBRUSH)GetStockObject(WHITE_BRUSH));
       if (!i_pixels || i_w <= 0 || i_h <= 0)
       {
-        SetTextColor(hdc, RGB(120, 120, 120));
+        SetTextColor(hdc, g_is_dark ? DARK_TEXT_DIM : RGB(120, 120, 120));
         SetBkMode(hdc, TRANSPARENT);
         HFONT oldFont = (HFONT)SelectObject(hdc, g_hFont);
         const wchar_t *msg = S.imgStatusInit;
@@ -1060,14 +1623,17 @@ static void i_draw(HWND hwnd, HDC hdc)
     size_t npx = (size_t)i_w * i_h;
     uint8_t *bgra = (uint8_t *)malloc(npx * 4);
     if (!bgra) return;
-    // 与白色背景（#ffffff）做 alpha 混合：透明像素显示为白，半透明平滑过渡
+    // 与预览背景做 alpha 混合：透明像素显示为背景色，半透明平滑过渡
+    const uint8_t bg_r = g_is_dark ? (uint8_t)GetRValue(DARK_PIC_BG) : 255;
+    const uint8_t bg_g = g_is_dark ? (uint8_t)GetGValue(DARK_PIC_BG) : 255;
+    const uint8_t bg_b = g_is_dark ? (uint8_t)GetBValue(DARK_PIC_BG) : 255;
     for (size_t i = 0; i < npx; i++)
     {
         int a = src[i*4+3];
         int inv = 255 - a;
-        bgra[i*4]   = (uint8_t)((src[i*4+2] * a + 255 * inv) / 255);
-        bgra[i*4+1] = (uint8_t)((src[i*4+1] * a + 255 * inv) / 255);
-        bgra[i*4+2] = (uint8_t)((src[i*4]   * a + 255 * inv) / 255);
+        bgra[i*4]   = (uint8_t)((src[i*4+2] * a + bg_b * inv) / 255);
+        bgra[i*4+1] = (uint8_t)((src[i*4+1] * a + bg_g * inv) / 255);
+        bgra[i*4+2] = (uint8_t)((src[i*4]   * a + bg_r * inv) / 255);
         bgra[i*4+3] = 255;
     }
     SetStretchBltMode(hdc, HALFTONE);
@@ -1148,12 +1714,12 @@ static void layout_image(HWND hwnd)
 static void create_image_controls(HWND hwnd)
 {
     HMODULE mod = GetModuleHandleW(NULL);
-    i_open = CreateWindowExW(0, L"BUTTON", S.openImage, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_OPEN, mod, NULL);
-    i_enc = CreateWindowExW(0, L"BUTTON", S.encrypt, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ENC, mod, NULL);
-    i_dec = CreateWindowExW(0, L"BUTTON", S.decrypt, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_DEC, mod, NULL);
-    i_save = CreateWindowExW(0, L"BUTTON", S.savePng, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_SAVE, mod, NULL);
-    i_btnCopy = CreateWindowExW(0, L"BUTTON", S.copy, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_COPY, mod, NULL);
-    i_btnClear = CreateWindowExW(0, L"BUTTON", S.clear, WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_CLEAR, mod, NULL);
+    i_open = CreateWindowExW(0, L"BUTTON", S.openImage, WS_CHILD | BS_OWNERDRAW, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_OPEN, mod, NULL);
+    i_enc = CreateWindowExW(0, L"BUTTON", S.encrypt, WS_CHILD | BS_OWNERDRAW, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ENC, mod, NULL);
+    i_dec = CreateWindowExW(0, L"BUTTON", S.decrypt, WS_CHILD | BS_OWNERDRAW, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_DEC, mod, NULL);
+    i_save = CreateWindowExW(0, L"BUTTON", S.savePng, WS_CHILD | BS_OWNERDRAW, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_SAVE, mod, NULL);
+    i_btnCopy = CreateWindowExW(0, L"BUTTON", S.copy, WS_CHILD | BS_OWNERDRAW, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_COPY, mod, NULL);
+    i_btnClear = CreateWindowExW(0, L"BUTTON", S.clear, WS_CHILD | BS_OWNERDRAW, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_CLEAR, mod, NULL);
     i_lblKey = CreateWindowExW(0, L"STATIC", S.key, WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
     i_key = CreateWindowExW(0, L"EDIT", L"mimo", WS_CHILD | WS_BORDER | ES_AUTOHSCROLL, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_KEY, mod, NULL);
     i_lblRound = CreateWindowExW(0, L"STATIC", S.rounds, WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
@@ -1162,7 +1728,7 @@ static void create_image_controls(HWND hwnd)
     SendMessageW(i_roundud, UDM_SETBUDDY, (WPARAM)i_round, 0);
     SendMessageW(i_roundud, UDM_SETRANGE, 0, MAKELONG(99, 1));
     SendMessageW(i_roundud, UDM_SETPOS, 0, MAKELONG(1, 0));
-    i_chk = CreateWindowExW(0, L"BUTTON", S.showOrig, WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_CHKORIG, mod, NULL);
+    i_chk = CreateWindowExW(0, L"BUTTON", S.showOrig, WS_CHILD | BS_OWNERDRAW, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_CHKORIG, mod, NULL);
     i_pic = CreateWindowExW(WS_EX_CLIENTEDGE, L"ImgEncryptPicBox", L"", WS_CHILD, 0, 0, 10, 10, hwnd, NULL, mod, NULL);
     i_status = CreateWindowExW(0, L"STATIC", S.imgStatusInit, WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_STATUS, mod, NULL);
     i_zoom = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_RIGHT, 0, 0, 10, 10, hwnd, (HMENU)(LONG_PTR)ID_I_ZOOM, mod, NULL);
@@ -1234,6 +1800,17 @@ static void apply_lang(void)
     SetWindowTextW(g_tabText, S.tabText);
     SetWindowTextW(g_tabImage, S.tabImage);
     SetWindowTextW(g_langLabel, S.langLabel);
+    if (g_themeLabel) SetWindowTextW(g_themeLabel, S.themeLabel);
+    if (g_themeCombo)
+    {
+        int sel = (int)SendMessageW(g_themeCombo, CB_GETCURSEL, 0, 0);
+        if (sel < 0) sel = g_theme;
+        SendMessageW(g_themeCombo, CB_RESETCONTENT, 0, 0);
+        SendMessageW(g_themeCombo, CB_ADDSTRING, 0, (LPARAM)S.themeSystem);
+        SendMessageW(g_themeCombo, CB_ADDSTRING, 0, (LPARAM)S.themeLight);
+        SendMessageW(g_themeCombo, CB_ADDSTRING, 0, (LPARAM)S.themeDark);
+        SendMessageW(g_themeCombo, CB_SETCURSEL, (WPARAM)sel, 0);
+    }
 
     set_text(t_lblKey, S.key);
     set_text(t_lblRound, S.rounds);
@@ -1282,6 +1859,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 }
             }
             break;
+        case ID_THEME_COMBO:
+            if (HIWORD(wp) == CBN_SELCHANGE)
+            {
+                int sel = (int)SendMessageW(g_themeCombo, CB_GETCURSEL, 0, 0);
+                if (sel >= 0 && sel <= THEME_DARK)
+                {
+                    g_theme = sel;
+                    save_theme();
+                    apply_theme();
+                }
+            }
+            break;
         // 文本
         case ID_T_ENC: t_transform(1); break;
         case ID_T_DEC: t_transform(0); break;
@@ -1297,11 +1886,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case ID_I_COPY: i_copy(); break;
         case ID_I_CLEAR: i_clear(); break;
         case ID_I_CHKORIG:
-            i_show_orig = (SendMessageW(i_chk, BM_GETCHECK, 0, 0) == BST_CHECKED);
-            // 显示原图时禁用加解密按钮，防止误操作
-            EnableWindow(i_enc, !i_show_orig && i_pixels);
-            EnableWindow(i_dec, !i_show_orig && i_pixels);
-            InvalidateRect(i_pic, NULL, TRUE);
+            {
+                int checked = (SendMessageW(i_chk, BM_GETCHECK, 0, 0) == BST_CHECKED) ? 0 : 1;
+                SendMessageW(i_chk, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
+                i_show_orig = checked;
+                EnableWindow(i_enc, !i_show_orig && i_pixels);
+                EnableWindow(i_dec, !i_show_orig && i_pixels);
+                InvalidateRect(i_chk, NULL, TRUE);
+                InvalidateRect(i_pic, NULL, TRUE);
+            }
             break;
         }
         break;
@@ -1360,11 +1953,92 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             RECT cr; GetClientRect(hwnd, &cr);
             int cw = cr.right - cr.left;
+            MoveWindow(g_themeLabel, cw - px(340), px(12), px(44), px(22), TRUE);
+            MoveWindow(g_themeCombo, cw - px(292), px(10), px(108), px(200), TRUE);
             MoveWindow(g_langLabel, cw - px(170), px(12), px(70), px(22), TRUE);
             MoveWindow(g_langCombo, cw - px(96), px(10), px(90), px(200), TRUE);
             if (g_active_tab == 0) layout_text(hwnd);
             else layout_image(hwnd);
         }
+        break;
+
+    case WM_ERASEBKGND:
+        {
+            RECT rc; GetClientRect(hwnd, &rc);
+            FillRect((HDC)wp, &rc, g_is_dark ? g_brushWindow : (HBRUSH)GetSysColorBrush(COLOR_WINDOW));
+            return 1;
+        }
+
+    case WM_DRAWITEM:
+        {
+            DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lp;
+            if (dis && dis->CtlType == ODT_BUTTON)
+            {
+                draw_owner_button(dis);
+                return TRUE;
+            }
+        }
+        break;
+
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLORBTN:
+    case WM_CTLCOLORSCROLLBAR:
+        if (g_is_dark)
+        {
+            HDC hdc = (HDC)wp;
+            SetBkMode(hdc, OPAQUE);
+            if (msg == WM_CTLCOLOREDIT || msg == WM_CTLCOLORLISTBOX)
+            {
+                SetTextColor(hdc, DARK_TEXT);
+                SetBkColor(hdc, DARK_EDIT_BG);
+                return (LRESULT)(g_brushEdit ? g_brushEdit : GetSysColorBrush(COLOR_WINDOW));
+            }
+            if (msg == WM_CTLCOLORBTN)
+            {
+                SetTextColor(hdc, DARK_TEXT);
+                SetBkColor(hdc, DARK_BTN_BG);
+                return (LRESULT)(g_brushBtn ? g_brushBtn : GetSysColorBrush(COLOR_BTNFACE));
+            }
+            if (msg == WM_CTLCOLORSCROLLBAR)
+            {
+                SetBkColor(hdc, DARK_EDIT_BG);
+                return (LRESULT)(g_brushEdit ? g_brushEdit : GetSysColorBrush(COLOR_SCROLLBAR));
+            }
+            SetTextColor(hdc, DARK_TEXT);
+            SetBkColor(hdc, DARK_WIN_BG);
+            SetBkMode(hdc, TRANSPARENT);
+            return (LRESULT)(g_brushStatic ? g_brushStatic : GetSysColorBrush(COLOR_WINDOW));
+        }
+        // 浅色：显式用窗口白底，避免 DefWindowProc 给静态标签/只读 EDIT 染成灰底
+        {
+            HDC hdc = (HDC)wp;
+            if (msg == WM_CTLCOLORSTATIC || msg == WM_CTLCOLORBTN)
+            {
+                SetTextColor(hdc, GetSysColor(COLOR_WINDOWTEXT));
+                SetBkMode(hdc, TRANSPARENT);
+                return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+            }
+            if (msg == WM_CTLCOLOREDIT || msg == WM_CTLCOLORLISTBOX)
+            {
+                SetTextColor(hdc, GetSysColor(COLOR_WINDOWTEXT));
+                SetBkColor(hdc, GetSysColor(COLOR_WINDOW));
+                SetBkMode(hdc, OPAQUE);
+                return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+            }
+            // scrollbar：交回系统
+            return DefWindowProcW(hwnd, msg, wp, lp);
+        }
+
+    case WM_SETTINGCHANGE:
+        if (lp && lstrcmpiW((LPCWSTR)lp, L"ImmersiveColorSet") == 0 && g_theme == THEME_SYSTEM)
+            apply_theme();
+        break;
+
+    case WM_DWMCOLORIZATIONCOLORCHANGED:
+        if (g_theme == THEME_SYSTEM)
+            apply_theme();
         break;
 
     case WM_DPICHANGED:
@@ -1446,6 +2120,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
     case WM_DESTROY:
         free(i_pixels); free(i_orig);
+        free_theme_brushes();
         if (g_hFont) DeleteObject(g_hFont);
         PostQuitMessage(0);
         break;
@@ -1475,7 +2150,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
 {
     OleInitialize(NULL);
     enable_dpi_awareness();
+    load_theme_apis();
+    load_theme();
     load_lang();
+    // 窗口创建前先解析主题，便于深色模式应用层生效
+    if (g_theme == THEME_DARK) g_is_dark = 1;
+    else if (g_theme == THEME_LIGHT) g_is_dark = 0;
+    else g_is_dark = system_apps_use_dark();
+    if (pSetPreferredAppMode)
+    {
+        pSetPreferredAppMode(g_is_dark ? 2 : 3);
+        if (pFlushMenuThemes) pFlushMenuThemes();
+    }
 
     // --selftest 支持
     for (const wchar_t *p = GetCommandLineW(); *p; p++)
@@ -1533,23 +2219,33 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
     g_hwndMain = CreateWindowExW(0, L"AllEncryptApp", S.windowTitle,
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, win_w, win_h,
         NULL, NULL, hInstance, NULL);
+    apply_dark_titlebar(g_hwndMain);
 
     // 接受拖拽文件放入
     DragAcceptFiles(g_hwndMain, TRUE);
 
     // ===== Tab 按钮 =====
-    g_tabText = CreateWindowExW(0, L"BUTTON", S.tabText, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+    g_tabText = CreateWindowExW(0, L"BUTTON", S.tabText, WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         0, 0, 10, 10, g_hwndMain, (HMENU)(LONG_PTR)ID_TAB_TEXT, hInstance, NULL);
-    g_tabImage = CreateWindowExW(0, L"BUTTON", S.tabImage, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+    g_tabImage = CreateWindowExW(0, L"BUTTON", S.tabImage, WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         0, 0, 10, 10, g_hwndMain, (HMENU)(LONG_PTR)ID_TAB_IMAGE, hInstance, NULL);
 
-    // ===== 语言选择 =====
+    // ===== 语言 / 主题选择 =====
+    g_themeLabel = CreateWindowExW(0, L"STATIC", S.themeLabel, WS_CHILD | WS_VISIBLE | SS_LEFT,
+        0, 0, 10, 10, g_hwndMain, NULL, hInstance, NULL);
+    g_themeCombo = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        0, 0, 10, 200, g_hwndMain, (HMENU)(LONG_PTR)ID_THEME_COMBO, hInstance, NULL);
+    SendMessageW(g_themeCombo, CB_ADDSTRING, 0, (LPARAM)S.themeSystem);
+    SendMessageW(g_themeCombo, CB_ADDSTRING, 0, (LPARAM)S.themeLight);
+    SendMessageW(g_themeCombo, CB_ADDSTRING, 0, (LPARAM)S.themeDark);
+    SendMessageW(g_themeCombo, CB_SETCURSEL, (WPARAM)g_theme, 0);
+
     g_langLabel = CreateWindowExW(0, L"STATIC", S.langLabel, WS_CHILD | WS_VISIBLE | SS_LEFT,
         0, 0, 10, 10, g_hwndMain, NULL, hInstance, NULL);
     g_langCombo = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
         0, 0, 10, 200, g_hwndMain, (HMENU)(LONG_PTR)ID_LANG_COMBO, hInstance, NULL);
-    SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)L"\u7b80\u4f53\u4e2d\u6587");
-    SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)L"\u7e41\u9ad4\u4e2d\u6587");
+    SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)L"简体中文");
+    SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)L"繁體中文");
     SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)L"English");
     SendMessageW(g_langCombo, CB_SETCURSEL, (WPARAM)g_lang, 0);
 
@@ -1572,13 +2268,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
     int cw = cr.right - cr.left;
     MoveWindow(g_tabText, px(8), px(8), px(140), px(30), TRUE);
     MoveWindow(g_tabImage, px(156), px(8), px(140), px(30), TRUE);
+    MoveWindow(g_themeLabel, cw - px(340), px(12), px(44), px(22), TRUE);
+    MoveWindow(g_themeCombo, cw - px(292), px(10), px(108), px(200), TRUE);
     MoveWindow(g_langLabel, cw - px(170), px(12), px(70), px(22), TRUE);
-            MoveWindow(g_langCombo, cw - px(96), px(10), px(90), px(200), TRUE);
+    MoveWindow(g_langCombo, cw - px(96), px(10), px(90), px(200), TRUE);
+    SendMessageW(g_themeLabel, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(g_themeCombo, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(g_langLabel, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     SendMessageW(g_langCombo, WM_SETFONT, (WPARAM)g_hFont, TRUE);
 
     switch_tab(0);
     layout_text(g_hwndMain);
+    apply_theme();
+    subclass_theme_controls();
 
     if (demo)
     {
